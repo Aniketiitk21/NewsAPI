@@ -2,7 +2,7 @@
 import datetime as dt
 from typing import List, Optional, Dict
 import pytz, feedparser, re, time
-from newspaper import Article, Config
+
 from .sources import NATIONAL_FEEDS, STATE_FEEDS
 from .config import CATEGORY_KEYWORDS
 from .classify import stance_for_state_politics
@@ -27,7 +27,7 @@ def _get_cached(key: str) -> Optional[List[Dict]]:
     return it["value"]
 
 def _set_cached(key: str, value: List[Dict]):
-    _CACHE[key] = {"ts": dt.datetime.utcnow(), "value": value[:]}  # store copy
+    _CACHE[key] = {"ts": dt.datetime.utcnow(), "value": value[:]}
 
 def _parse_pub_date(entry) -> Optional[dt.datetime]:
     tstruct = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
@@ -39,13 +39,23 @@ def _parse_pub_date(entry) -> Optional[dt.datetime]:
         return None
 
 def _download_article(url: str, retries: int = 1) -> Dict:
+    """
+    Lazy-import newspaper3k to avoid hard dependency at app startup.
+    If import fails (e.g., lxml_html_clean not installed), we return empty text
+    so the caller can gracefully fall back to RSS description.
+    """
+    try:
+        from newspaper import Article, Config  # lazy import
+    except Exception as e:
+        return {"title": "", "text": "", "published_at": None, "err": f"newspaper_import_failed:{e.__class__.__name__}"}
+
     cfg = Config()
     cfg.browser_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsLens/1.1"
     cfg.request_timeout = 12
     cfg.memoize_articles = False
     cfg.fetch_images = False
     last_err = None
-    for i in range(retries + 1):
+    for _ in range(retries + 1):
         try:
             art = Article(url, config=cfg)
             art.download()
@@ -62,8 +72,7 @@ def _download_article(url: str, retries: int = 1) -> Dict:
         except Exception as e:
             last_err = e
             time.sleep(0.5)
-    # best-effort fallback
-    return {"title": "", "text": "", "published_at": None}
+    return {"title": "", "text": "", "published_at": None, "err": f"download_failed:{type(last_err).__name__ if last_err else 'unknown'}"}
 
 def _match_category(title: str, desc: str, fulltext: str, cat: Optional[str]) -> bool:
     if not cat:
@@ -121,23 +130,21 @@ def get_news(
                 except Exception:
                     pass
 
-                # LIGHT vs DEEP
                 art_title, art_text, art_pub = title, "", None
                 if fetch_mode == "deep":
                     a = _download_article(norm, retries=1)
-                    art_title = a["title"] or art_title
-                    art_text = a["text"] or ""
-                    art_pub = a["published_at"]
+                    art_title = a.get("title") or art_title
+                    art_text = a.get("text") or ""  # may be empty if import failed
+                    art_pub = a.get("published_at")
+                    if not art_text:  # graceful fallback to RSS desc
+                        art_text = desc
                 else:
                     art_text = desc
 
                 if not _match_category(art_title, desc, art_text, category):
                     continue
 
-                # Summarize (rule-based first, fallback to lead-3)
-                summary = summarize_rule_based(art_title, art_text, max_chars=900)
-                if not summary:
-                    summary = summary_from_text(art_text or desc, art_title, 900)
+                summary = summarize_rule_based(art_title, art_text, max_chars=900) or summary_from_text(art_text or desc, art_title, 900)
 
                 item = {
                     "title": art_title or title or "(untitled)",
@@ -159,7 +166,6 @@ def get_news(
                 if len(results) >= limit:
                     break
         except Exception:
-            # Skip broken feeds cleanly
             continue
         if len(results) >= limit:
             break
