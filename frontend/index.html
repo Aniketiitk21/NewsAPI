@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>NewsLens • India</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/main.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📰 NewsLens <span class="muted">India</span></div>
+    <nav class="filters">
+      <!-- Step 1: Timeline -->
+      <div class="step">
+        <label>Timeline</label>
+        <select id="days">
+          <option value="">Select</option>
+          <option value="1">Today</option>
+          <option value="2" selected>Today + Yesterday</option>
+          <option value="3">Last 3 days</option>
+          <option value="5">Last 5 days</option>
+          <option value="7">Last 7 days</option>
+        </select>
+      </div>
+
+      <!-- Step 2: Scope -->
+      <div class="step">
+        <label>Scope</label>
+        <select id="scope" disabled>
+          <option value="national" selected>National</option>
+          <option value="state">State</option>
+        </select>
+      </div>
+
+      <!-- Step 3: State -->
+      <div class="step">
+        <label>State</label>
+        <select id="state" disabled></select>
+      </div>
+
+      <!-- Step 4: Category -->
+      <div class="step">
+        <label>Category</label>
+        <select id="category" disabled>
+          <option value="">All</option>
+          <option value="politics">Politics</option>
+          <option value="sports">Sports</option>
+          <option value="education">Education</option>
+          <option value="science">Science/Tech</option>
+          <option value="business">Business</option>
+          <option value="entertainment">Entertainment</option>
+        </select>
+      </div>
+
+      <div class="step">
+        <label>Mode</label>
+        <select id="mode" disabled>
+          <option value="light" selected>Fast</option>
+          <option value="deep">Deep</option>
+        </select>
+      </div>
+
+      <button id="refresh" class="primary" disabled>Refresh</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="hero">
+      <h1 id="headline">Pick a timeline to start</h1>
+      <p class="sub">Step 1: Timeline → Step 2: Scope → Step 3: (if State) choose State → Step 4: Category.</p>
+    </section>
+
+    <section id="grid" class="grid"></section>
+    <div id="empty" class="empty" style="display:none;">No news found for your filters.</div>
+  </main>
+
+  <footer class="footer">
+    <span>Made with ❤️ • FastAPI + Vanilla JS • <a href="#" target="_blank" rel="noopener">About</a></span>
+  </footer>
+
+  <!-- Cache-bust the JS on updates -->
+  <script src="assets/app.js?v=2025-10-01-2"></script>
+</body>
+</html>

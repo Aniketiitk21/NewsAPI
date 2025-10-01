@@ -1,0 +1,21 @@
+@"
+# Python
+__pycache__/
+*.py[cod]
+*.log
+*.sqlite3
+.env
+.venv/
+venv/
+env/
+news/             # your virtualenv folder
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+
+# Node/Front-end
+node_modules/
+*.map
+"@ | Out-File -Encoding utf8 .gitignore
