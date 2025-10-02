@@ -2,15 +2,47 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>NewsLens • India</title>
+  <title>NewsLens • Signals</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="assets/main.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">📰 NewsLens <span class="muted">India</span></div>
-    <nav class="filters">
-      <!-- Step 1: Timeline -->
+  <!-- Top search (global) -->
+  <header class="topbar sticky">
+    <div class="brand">⚡ NewsLens <span class="muted">Signals</span></div>
+    <div class="searchbar">
+      <input id="q" type="search" placeholder="Search IPO, JEE, Infosys, Cricket, Metro…" />
+      <button id="qbtn">Search</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="home">Home</button>
+    <button class="tab" data-tab="feed">Feed</button>
+    <button class="tab" data-tab="trending">Trending</button>
+    <button class="tab" data-tab="digest">My Digest</button>
+  </nav>
+
+  <!-- ====== HOME (Top 5 Signals + Trending preview) ====== -->
+  <main id="home" class="view active">
+    <section class="signals">
+      <h2>Today’s Top 5 Signals</h2>
+      <div id="signals" class="signals-row"></div>
+    </section>
+
+    <section class="preview">
+      <div class="row">
+        <h3>Trending Entities</h3>
+        <button id="goto-trending" class="linklike">See all →</button>
+      </div>
+      <div id="trend-cloud" class="cloud"></div>
+    </section>
+  </main>
+
+  <!-- ====== FEED (your existing structured filters) ====== -->
+  <main id="feed" class="view">
+    <header class="filters">
       <div class="step">
         <label>Timeline</label>
         <select id="days">
@@ -23,7 +55,6 @@
         </select>
       </div>
 
-      <!-- Step 2: Scope -->
       <div class="step">
         <label>Scope</label>
         <select id="scope" disabled>
@@ -32,13 +63,11 @@
         </select>
       </div>
 
-      <!-- Step 3: State -->
       <div class="step">
         <label>State</label>
         <select id="state" disabled></select>
       </div>
 
-      <!-- Step 4: Category -->
       <div class="step">
         <label>Category</label>
         <select id="category" disabled>
@@ -61,10 +90,8 @@
       </div>
 
       <button id="refresh" class="primary" disabled>Refresh</button>
-    </nav>
-  </header>
+    </header>
 
-  <main>
     <section id="hero">
       <h1 id="headline">Pick a timeline to start</h1>
       <p class="sub">Step 1: Timeline → Step 2: Scope → Step 3: (if State) choose State → Step 4: Category.</p>
@@ -74,11 +101,45 @@
     <div id="empty" class="empty" style="display:none;">No news found for your filters.</div>
   </main>
 
+  <!-- ====== TRENDING ====== -->
+  <main id="trending" class="view">
+    <header class="row">
+      <h2>Trending Entities</h2>
+      <div>
+        <select id="trendDays">
+          <option value="1">Today</option>
+          <option value="2" selected>2 days</option>
+          <option value="7">7 days</option>
+        </select>
+        <button id="reload-trending">Reload</button>
+      </div>
+    </header>
+    <section id="trend-cloud-full" class="cloud"></section>
+    <section>
+      <h3>Top terms</h3>
+      <ul id="trend-list" class="toplist"></ul>
+    </section>
+  </main>
+
+  <!-- ====== MY DIGEST ====== -->
+  <main id="digest" class="view">
+    <header class="row">
+      <h2>My Digest</h2>
+      <div class="followbar">
+        <input id="follow-input" placeholder="Add term to follow (e.g., JEE, IPO)" />
+        <button id="follow-add">Add</button>
+      </div>
+      <div id="follow-chips" class="chips"></div>
+    </header>
+    <section id="digest-grid" class="grid"></section>
+    <div id="digest-empty" class="empty" style="display:none;">Nothing yet. Follow some terms above.</div>
+  </main>
+
   <footer class="footer">
     <span>Made with ❤️ • FastAPI + Vanilla JS • <a href="#" target="_blank" rel="noopener">About</a></span>
   </footer>
 
-  <!-- Cache-bust the JS on updates -->
-  <script src="assets/app.js?v=2025-10-01-2"></script>
+  <!-- Cache-bust JS -->
+  <script src="assets/app.js?v=2025-10-02-1"></script>
 </body>
 </html>
