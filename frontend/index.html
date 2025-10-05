@@ -7,6 +7,28 @@
   <link rel="stylesheet" href="assets/main.css" />
 </head>
 <body>
+
+  <!-- Login Gate (very simple, rule-based) -->
+  <div id="login-overlay" class="login-overlay" aria-hidden="true">
+    <div class="login-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <h2 id="login-title">Welcome to <span class="brand-mono">NewsLens</span></h2>
+      <p class="muted">Sign in to continue</p>
+      <div class="login-fields">
+        <label>Username</label>
+        <input id="login-user" autocomplete="username" placeholder="Enter username" />
+        <label>Password</label>
+        <input id="login-pass" type="password" autocomplete="current-password" placeholder="Enter password" />
+      </div>
+      <div class="login-actions">
+        <button id="login-btn" class="primary">Sign in</button>
+        <div id="login-err" class="login-err" role="alert" style="display:none;"></div>
+      </div>
+      <div class="muted small tips">
+        Hint: <code>sandhanar21</code> / <code>Bharat@1947</code>
+      </div>
+    </div>
+  </div>
+
   <!-- Top bar + search -->
   <header class="topbar sticky">
     <div class="brand">⚡ NewsLens <span class="muted">Signals</span></div>
@@ -100,7 +122,7 @@
     <div id="empty" class="empty" style="display:none;">No news found for your filters.</div>
   </main>
 
-  <!-- ===== HABITS (NEW) ===== -->
+  <!-- ===== HABITS ===== -->
   <main id="habits" class="view">
     <section class="habits-header">
       <div class="left">
@@ -136,7 +158,6 @@
             <input id="habit-goal" type="number" min="1" max="7" value="5" />
             <span class="muted small">days / week</span>
           </div>
-
         </div>
 
         <div class="habit-actions">
@@ -200,6 +221,7 @@
     <span>Made with ❤️ • FastAPI + Vanilla JS • <a href="#" target="_blank" rel="noopener">About</a></span>
   </footer>
 
-  <script src="assets/app.js?v=2025-10-05-light-habits2"></script>
+  <!-- bump version when you tweak JS -->
+  <script src="assets/app.js?v=2025-10-05-dark-login"></script>
 </body>
 </html>
