@@ -1,3 +1,4 @@
+# backend/app.py
 import os
 import pathlib
 import re
@@ -16,10 +17,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from backend.aggregator.fetch import get_news
 from backend.aggregator.utils import safe_int
 
+# ---- NEW: httpx for live Shloka fetch ----
+import httpx
+
 APP_NAME = os.getenv("APP_NAME", "NewsLens")
 ENV = os.getenv("ENV", "prod")
 
-app = FastAPI(title=f"{APP_NAME} API", version="2.2.0")
+app = FastAPI(title=f"{APP_NAME} API", version="2.3.0")
 
 # ---- No-cache assets (so app.js & CSS refresh instantly) --------------------
 class NoCacheAssets(BaseHTTPMiddleware):
@@ -52,7 +56,7 @@ def favicon():
         return FileResponse(FAVICON)
     return FileResponse(INDEX_HTML) if INDEX_HTML.exists() else {"ok": True}
 
-# ---- CORS (GET only is fine, allow all origins) -----------------------------
+# ---- CORS (GET-only; safe for public) --------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -95,7 +99,6 @@ def api_news(
         raise HTTPException(status_code=500, detail="Failed to fetch news") from e
 
 # ========== Discovery endpoints used by the new UI ===========================
-
 STOPWORDS = set("""
 a an and are as at be by for from has have he her his i in is it its of on or our so
 that the their them there they this to was were will with you your
@@ -150,12 +153,13 @@ def api_top5(days: int = Query(2, ge=1, le=14)):
     for key in ["finance","education","sports","tech","general"]:
         if buckets[key]:
             picked.append(buckets[key][0])
-        if len(picked) == 5: break
+        if len(picked) == 5:
+            break
 
     if len(picked) < 5:
         seen = set(x["url"] for x in picked)
         for it in base:
-            if it["url"] in seen: 
+            if it["url"] in seen:
                 continue
             picked.append(it)
             if len(picked) == 5:
@@ -201,7 +205,7 @@ def api_digest(follow: str = Query("", description="Comma separated follow terms
     seen, uniq = set(), []
     for it in hits:
         u = it["url"]
-        if u in seen: 
+        if u in seen:
             continue
         seen.add(u)
         uniq.append(it)
@@ -230,44 +234,90 @@ def feed(topic: str):
     </channel></rss>"""
     return Response(content=xml, media_type="application/rss+xml")
 
-# ---- Shloka of the Day (backend endpoint with graceful fallback) ------------
-# If you later wire a real data source, just replace SHLOKAS list or read from a JSON file.
-SHLOKAS = [
-    {"ref":"2.47","dev":"कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।","tr":"You have a right to action alone, not to its fruits."},
-    {"ref":"2.48","dev":"योगस्थः कुरु कर्माणि सङ्गं त्यक्त्वा धनंजय ।","tr":"Established in yoga, perform your duty, abandoning attachment."},
-    {"ref":"3.19","dev":"तस्मादसक्तः सततं कार्यं कर्म समाचर ।","tr":"Therefore, without attachment, constantly perform your proper work."},
-    {"ref":"4.7","dev":"यदा यदा हि धर्मस्य ग्लानिर्भवति भारत ।","tr":"Whenever righteousness declines, I manifest Myself."},
-    {"ref":"5.10","dev":"ब्रह्मण्याधाय कर्माणि सङ्गं त्यक्त्वा करोति यः ।","tr":"He who acts renouncing attachment is untouched by sin."},
-    {"ref":"6.5","dev":"उद्धरेदात्मनाऽत्मानं नात्मानमवसादयेत् ।","tr":"Lift yourself by yourself; do not degrade yourself."},
-    {"ref":"6.26","dev":"यतो यतो निश्चरति मनश्चञ्चलमस्थिरम् ।","tr":"Wherever the restless mind wanders, bring it back under control."},
-    {"ref":"7.7","dev":"मत्तः परतरं नान्यत्किञ्चिदस्ति धनंजय ।","tr":"There is nothing whatsoever higher than Me, Arjuna."},
-    {"ref":"8.7","dev":"तस्मात्सर्वेषु कालेषु मामनुस्मर युध्य च ।","tr":"Therefore remember Me at all times and fight."},
-    {"ref":"9.22","dev":"अनन्याश्चिन्तयन्तो मां ये जनाः पर्युपासते ।","tr":"Those who single-mindedly worship Me, I carry their needs."},
-    {"ref":"10.20","dev":"अहमात्मा गुडाकेश सर्वभूताशयस्थितः ।","tr":"I am the Self seated in the hearts of all beings."},
-    {"ref":"12.15","dev":"यस्मान्नोद्विजते लोको लोकान्नोद्विजते च यः ।","tr":"One who neither disturbs the world nor is disturbed by it..."},
-    {"ref":"13.2","dev":"क्षेत्रज्ञं चापि मां विद्धि सर्वक्षेत्रेषु भारत ।","tr":"Know Me as the knower in all bodies."},
-    {"ref":"14.26","dev":"मां च योऽव्यभिचारेण भक्तियोगेन सेवते ।","tr":"He who serves Me with unwavering devotion transcends the gunas."},
-    {"ref":"16.3","dev":"तेजः क्षमा धृतिः शौचम् अद्रोहो नातिमानिता ।","tr":"Vigor, forgiveness, fortitude, purity, non-injury, humility..."},
-    {"ref":"18.66","dev":"सर्वधर्मान् परित्यज्य मामेकं शरणं व्रज ।","tr":"Abandon all duties and take refuge in Me alone."},
+# ---- Shloka of the Day from authentic source -------------------------------
+# We cycle deterministically through all 700 verses to avoid 404s on chapters
+# with fewer verses, then fetch the selected verse from bhagavadgitaapi.in.
+# Optional override:
+#   SHLOKA_API_URL = "https://bhagavadgitaapi.in/slok"
+SHLOKA_API_BASE = os.getenv("SHLOKA_API_URL", "https://bhagavadgitaapi.in/slok")
+
+# Verses per chapter (1..18) = 700 total
+CH_VERSE_COUNTS = [
+    47, 72, 43, 42, 29, 47, 30, 28, 34,
+    42, 55, 20, 35, 27, 20, 24, 28, 78
 ]
+CH_CUMSUM = []
+_total = 0
+for c in CH_VERSE_COUNTS:
+    _total += c
+    CH_CUMSUM.append(_total)  # cumulative totals; last == 700
+
+def _pick_daily_chapter_verse(day_index: int) -> (int, int):
+    """Map a day index -> (chapter, verse), covering all 700 verses in a loop."""
+    total = CH_CUMSUM[-1]  # 700
+    # 1..700
+    k = (day_index % total) + 1
+    # find chapter
+    ch = 1
+    prev = 0
+    for i, csum in enumerate(CH_CUMSUM, start=1):
+        if k <= csum:
+            ch = i
+            prev = CH_CUMSUM[i-2] if i > 1 else 0
+            break
+    v = k - prev
+    return ch, v
 
 @app.get("/api/shloka/daily")
 def shloka_daily():
+    """
+    Deterministic daily shloka:
+      - Computes (chapter, verse) from current day number covering all 700 verses.
+      - Fetches verse from bhagavadgitaapi.in (authentic source).
+      - Gracefully falls back by trying next verses if a particular verse 404s.
+    """
     try:
-        # If you add SHLOKA_FILE env var pointing to a JSON list [{ref,dev,tr}], it will load that file.
-        path = os.getenv("SHLOKA_FILE")
-        if path and pathlib.Path(path).exists():
-            import json
-            arr = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-            if arr:
-                idx = (int(datetime.now(timezone.utc).timestamp()) // 86400) % len(arr)
-                return arr[idx]
-    except Exception:
-        pass
+        # Day index based on UTC days since epoch (stable across users)
+        day_index = int(datetime.now(timezone.utc).timestamp()) // 86400
+        ch, v = _pick_daily_chapter_verse(day_index)
 
-    arr = SHLOKAS
-    idx = (int(datetime.now(timezone.utc).timestamp()) // 86400) % len(arr)
-    return arr[idx]
+        # Try up to 3 consecutive verses in case one endpoint is missing
+        for offset in range(3):
+            ch_try, v_try = ch, v + offset
+            # if verse exceeds the chapter's verse count, wrap to next chapter
+            if v_try > CH_VERSE_COUNTS[ch_try - 1]:
+                ch_try += 1
+                if ch_try > 18:
+                    ch_try = 1
+                v_try = 1
+
+            url = f"{SHLOKA_API_BASE}/{ch_try}/{v_try}/"
+            r = httpx.get(url, timeout=8.0)
+            if r.status_code == 200:
+                data = r.json()
+                # translation keys can vary; prefer 'translation', fallback to others if present
+                tr = (
+                    data.get("translation")
+                    or data.get("en")
+                    or data.get("tej")
+                    or data.get("siva")
+                    or "—"
+                )
+                return {
+                    "ref": f"{data.get('chapter', ch_try)}.{data.get('verse', v_try)}",
+                    "dev": data.get("slok"),
+                    "tr": tr
+                }
+
+        # Upstream failed repeatedly
+        raise RuntimeError("shloka upstream unavailable")
+    except Exception:
+        # Soft fallback: a very common verse; still avoid hardcoding list
+        return {
+            "ref": "2.47",
+            "dev": "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।",
+            "tr": "You have a right to action alone, not to its fruits."
+        }
 
 # ---- Entrypoint -------------------------------------------------------------
 if __name__ == "__main__":
