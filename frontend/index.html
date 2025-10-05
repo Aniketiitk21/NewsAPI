@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="assets/main.css" />
 </head>
 <body>
-  <!-- Top search (global) -->
+  <!-- Top bar + search -->
   <header class="topbar sticky">
     <div class="brand">⚡ NewsLens <span class="muted">Signals</span></div>
     <div class="searchbar">
@@ -20,11 +20,11 @@
   <nav class="tabs">
     <button class="tab active" data-tab="home">Home</button>
     <button class="tab" data-tab="feed">Feed</button>
-    <button class="tab" data-tab="trending">Trending</button>
+    <button class="tab" data-tab="habits">Habits</button>
     <button class="tab" data-tab="digest">My Digest</button>
   </nav>
 
-  <!-- ====== HOME (Top 5 Signals + Trending preview) ====== -->
+  <!-- ===== HOME (Top 5) ===== -->
   <main id="home" class="view active">
     <section class="signals">
       <h2>Today’s Top 5 Signals</h2>
@@ -33,14 +33,13 @@
 
     <section class="preview">
       <div class="row">
-        <h3>Trending Entities</h3>
-        <button id="goto-trending" class="linklike">See all →</button>
+        <h3 class="muted">Tips</h3>
+        <span class="muted">Use the search bar above or jump to <b>Feed</b> for full filters.</span>
       </div>
-      <div id="trend-cloud" class="cloud"></div>
     </section>
   </main>
 
-  <!-- ====== FEED (your existing structured filters) ====== -->
+  <!-- ===== FEED (kept) ===== -->
   <main id="feed" class="view">
     <header class="filters">
       <div class="step">
@@ -101,27 +100,53 @@
     <div id="empty" class="empty" style="display:none;">No news found for your filters.</div>
   </main>
 
-  <!-- ====== TRENDING ====== -->
-  <main id="trending" class="view">
-    <header class="row">
-      <h2>Trending Entities</h2>
-      <div>
-        <select id="trendDays">
-          <option value="1">Today</option>
-          <option value="2" selected>2 days</option>
-          <option value="7">7 days</option>
-        </select>
-        <button id="reload-trending">Reload</button>
+  <!-- ===== HABITS (NEW) ===== -->
+  <main id="habits" class="view">
+    <section class="habits-header">
+      <div class="left">
+        <h2>Habits Tracker</h2>
+        <div class="muted">Build consistency. Track daily check-ins with streaks & charts.</div>
       </div>
-    </header>
-    <section id="trend-cloud-full" class="cloud"></section>
-    <section>
-      <h3>Top terms</h3>
-      <ul id="trend-list" class="toplist"></ul>
+      <div class="right add-habit">
+        <input id="habit-name" placeholder="Add a habit (e.g., Run, Read, Code)" />
+        <input id="habit-color" type="color" value="#2563eb" title="Color" />
+        <button id="habit-add" class="primary">Add</button>
+      </div>
+    </section>
+
+    <section class="habits-board">
+      <aside class="habits-list">
+        <div class="row">
+          <label for="habit-select">Your habits</label>
+          <select id="habit-select"></select>
+        </div>
+        <div class="habit-actions">
+          <button id="habit-rename" class="mini">Rename</button>
+          <button id="habit-delete" class="mini danger">Delete</button>
+        </div>
+        <div class="stats">
+          <div><span>Current streak</span><b id="stat-current">0</b></div>
+          <div><span>Best streak</span><b id="stat-best">0</b></div>
+          <div><span>This month</span><b id="stat-month">0%</b></div>
+        </div>
+        <canvas id="habit-chart" height="120"></canvas>
+      </aside>
+
+      <section class="calendar-wrap">
+        <header class="cal-head">
+          <button id="cal-prev" class="mini">◀</button>
+          <h3 id="cal-title">Month YYYY</h3>
+          <button id="cal-next" class="mini">▶</button>
+        </header>
+        <div class="cal-grid" id="cal-grid">
+          <!-- days injected -->
+        </div>
+        <div class="muted small">Click a date to toggle done/undone. Data saved locally.</div>
+      </section>
     </section>
   </main>
 
-  <!-- ====== MY DIGEST ====== -->
+  <!-- ===== DIGEST ===== -->
   <main id="digest" class="view">
     <header class="row">
       <h2>My Digest</h2>
@@ -139,7 +164,6 @@
     <span>Made with ❤️ • FastAPI + Vanilla JS • <a href="#" target="_blank" rel="noopener">About</a></span>
   </footer>
 
-  <!-- Cache-bust JS -->
-  <script src="assets/app.js?v=2025-10-02-1"></script>
+  <script src="assets/app.js?v=2025-10-05-habits1"></script>
 </body>
 </html>
