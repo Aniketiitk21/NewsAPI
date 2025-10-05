@@ -350,37 +350,50 @@ def shloka_daily():
     _SHLOKA_CACHE[key] = fallback
     return fallback
 
-# ---------- Chat (Gemini) ----------
 @app.post("/api/chat")
 def chat_api(body: ChatIn = Body(...)):
     if not GEMINI_API_KEY:
         return JSONResponse({"text": "Gemini API key missing on server."}, status_code=500)
     try:
-        payload = {"contents":[{"parts":[{"text": body.message[:5000]}]}]}
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # Gemini API (v1) – flash or pro depending on key availability
+        model = "gemini-1.5-flash"  # you can change to gemini-1.5-pro if you have it
+        url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [
+                {"role": "user", "parts": [{"text": body.message[:8000]}]}
+            ]
+        }
 
         try:
-            import httpx  # lazy import
-            with httpx.Client(timeout=15.0) as client:
+            import httpx
+            with httpx.Client(timeout=20.0) as client:
                 r = client.post(url, json=payload)
                 if r.status_code != 200:
-                    return JSONResponse({"text": f"Gemini error: {r.text[:200]}"} , status_code=500)
+                    return JSONResponse({"text": f"Gemini error: {r.text[:200]}"}, status_code=500)
                 data = r.json()
         except Exception:
-            # urllib fallback
             import json, urllib.request
-            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
-                                         headers={"Content-Type":"application/json"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
 
-        out = (data.get("candidates",[{}])[0]
-                  .get("content",{})
-                  .get("parts",[{}])[0]
-                  .get("text",""))
+        # Extract text safely
+        out = (
+            data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+        )
         return {"text": out or "No response."}
     except Exception as e:
-        return JSONResponse({"text": f"Gemini request failed: {e.__class__.__name__}"}, status_code=500)
+        return JSONResponse(
+            {"text": f"Gemini request failed: {e.__class__.__name__} - {str(e)}"},
+            status_code=500,
+        )
 
 # ---------- entry ----------
 if __name__ == "__main__":
@@ -390,3 +403,4 @@ if __name__ == "__main__":
         port=safe_int(os.getenv("PORT", 8000)),
         reload=(ENV == "dev"),
     )
+
