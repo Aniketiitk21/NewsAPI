@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from collections import Counter
 from datetime import datetime, timezone, timedelta
 
-import httpx
+# feedparser is already used elsewhere; keep it
 import feedparser
 
 from fastapi import FastAPI, Query, HTTPException, Body
@@ -18,15 +18,14 @@ from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.aggregator.fetch import get_news
-from backend.aggregator.utils import safe_int
+from backend.aggregator.utils import safe_int, strip_html
 from backend.aggregator.summarize import summarize_rule_based
-from backend.aggregator.utils import strip_html
 
 APP_NAME = os.getenv("APP_NAME", "NewsLens")
 ENV = os.getenv("ENV", "prod")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-app = FastAPI(title=f"{APP_NAME} API", version="2.4.0")
+app = FastAPI(title=f"{APP_NAME} API", version="2.4.1")
 
 # ---------- no-cache for static assets ----------
 class NoCacheAssets(BaseHTTPMiddleware):
@@ -76,6 +75,9 @@ class NewsResponse(BaseModel):
 class TrendingResponse(BaseModel):
     terms: List[Dict[str, Any]]
 
+class ChatIn(BaseModel):
+    message: str
+
 # ---------- health ----------
 @app.get("/healthz")
 def healthz():
@@ -101,7 +103,7 @@ def api_news(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to fetch news") from e
 
-# ---------- discovery endpoints used by UI ----------
+# ---------- discovery endpoints ----------
 STOPWORDS = set("""
 a an and are as at be by for from has have he her his i in is it its of on or our so
 that the their them there they this to was were will with you your
@@ -210,26 +212,22 @@ def api_digest(follow: str = Query("", description="Comma separated follow terms
 
 # ---------- RSS → curated topics ----------
 CURATED_FEEDS: Dict[str, List[str]] = {
-    # Finance / Markets (top, stable publishers)
     "finance": [
         "https://www.moneycontrol.com/rss/MCtopnews.xml",
         "https://www.livemint.com/rss/markets",
         "https://www.financialexpress.com/feed/",
-        "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prrss=1",  # some pages won’t be RSS; the parser will skip
         "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
     ],
-    # Business / Startup
     "startup": [
         "https://inc42.com/feed/",
         "https://yourstory.com/feed",
         "https://techcrunch.com/startups/feed/",
         "https://the-ken.com/feed/",
     ],
-    # Science / AI
     "ai": [
         "https://www.analyticsindiamag.com/feed/",
         "https://ai.googleblog.com/atom.xml",
-        "https://openaccess.thecvf.com/rss.xml",   # CVF papers RSS
+        "https://openaccess.thecvf.com/rss.xml",
         "https://arxiv.org/rss/cs.CV",
     ],
 }
@@ -313,7 +311,7 @@ def feed(topic: str):
     </channel></rss>"""
     return Response(content=xml, media_type="application/rss+xml")
 
-# ---------- Shloka of the Day (authentic proxy with cache & graceful fallback) ----------
+# ---------- Shloka of the Day (authentic source with cache) ----------
 _SHLOKA_CACHE: Dict[str, Any] = {}
 @app.get("/api/shloka/daily")
 def shloka_daily():
@@ -324,18 +322,28 @@ def shloka_daily():
         ch = random.randint(1, 18)
         v = random.randint(1, 72)
         url = f"https://bhagavadgitaapi.in/slok/{ch}/{v}/"
-        with httpx.Client(timeout=8.0) as client:
-            r = client.get(url)
-        if r.status_code == 200:
-            data = r.json()
-            obj = {
-                "ref": f"{data.get('chapter')}.{data.get('verse')}",
-                "dev": data.get("slok") or "",
-                "tr": data.get("te") or data.get("et") or data.get("siva") or data.get("translation") or ""
-            }
-            if obj["dev"]:
-                _SHLOKA_CACHE[key] = obj
-                return obj
+
+        try:
+            import httpx  # lazy import
+            with httpx.Client(timeout=8.0) as client:
+                r = client.get(url)
+                ok = r.status_code == 200
+                data = r.json() if ok else {}
+        except Exception:
+            # urllib fallback
+            import json, urllib.request
+            req = urllib.request.Request(url, headers={"User-Agent":"NewsLens/1.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+        obj = {
+            "ref": f"{data.get('chapter')}.{data.get('verse')}",
+            "dev": data.get("slok") or "",
+            "tr": data.get("te") or data.get("et") or data.get("siva") or data.get("translation") or ""
+        }
+        if obj["dev"]:
+            _SHLOKA_CACHE[key] = obj
+            return obj
     except Exception:
         pass
     fallback = {"ref": "2.47", "dev": "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।", "tr": "You have a right to action alone, not to its fruits."}
@@ -343,22 +351,33 @@ def shloka_daily():
     return fallback
 
 # ---------- Chat (Gemini) ----------
-class ChatIn(BaseModel):
-    message: str
-
 @app.post("/api/chat")
 def chat_api(body: ChatIn = Body(...)):
     if not GEMINI_API_KEY:
         return JSONResponse({"text": "Gemini API key missing on server."}, status_code=500)
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         payload = {"contents":[{"parts":[{"text": body.message[:5000]}]}]}
-        with httpx.Client(timeout=15.0) as client:
-            r = client.post(url, json=payload)
-        if r.status_code != 200:
-            return JSONResponse({"text": f"Gemini error: {r.text[:200]}"} , status_code=500)
-        data = r.json()
-        out = data.get("candidates",[{}])[0].get("content",{}).get("parts",[{}])[0].get("text","")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+
+        try:
+            import httpx  # lazy import
+            with httpx.Client(timeout=15.0) as client:
+                r = client.post(url, json=payload)
+                if r.status_code != 200:
+                    return JSONResponse({"text": f"Gemini error: {r.text[:200]}"} , status_code=500)
+                data = r.json()
+        except Exception:
+            # urllib fallback
+            import json, urllib.request
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                         headers={"Content-Type":"application/json"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+        out = (data.get("candidates",[{}])[0]
+                  .get("content",{})
+                  .get("parts",[{}])[0]
+                  .get("text",""))
         return {"text": out or "No response."}
     except Exception as e:
         return JSONResponse({"text": f"Gemini request failed: {e.__class__.__name__}"}, status_code=500)
