@@ -1,59 +1,63 @@
-// ========= Core helpers =========
-const API = (path, params={}) => {
-  const usp = new URLSearchParams(params);
-  return `${path}${usp.toString() ? "?" + usp.toString() : ""}`;
+/* =============== helpers =============== */
+const API = (p, params={}) => {
+  const q = new URLSearchParams(params);
+  return `${p}${q.toString() ? "?" + q.toString() : ""}`;
 };
-const STATES = [
-  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
-  "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
-  "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan",
-  "Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
-  "Delhi","Jammu and Kashmir","Ladakh","Puducherry","Chandigarh"
-];
-function capitalize(s){ return s ? s[0].toUpperCase() + s.slice(1) : s; }
-function fmtDate(d){ return d.toISOString().slice(0,10); }
+const STATES = ["Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal","Delhi","Jammu and Kashmir","Ladakh","Puducherry","Chandigarh"];
+const capitalize = s => s ? s[0].toUpperCase()+s.slice(1) : s;
+const fmtDate = d => new Date(d).toISOString().slice(0,10);
 
-// ========= Tabs & nav =========
+/* =============== tabs/nav =============== */
 const tabs = document.querySelectorAll(".tab");
 const views = document.querySelectorAll(".view");
 function setActiveTab(name){
   tabs.forEach(t=>t.classList.toggle("active", t.dataset.tab===name));
   views.forEach(v=>v.classList.toggle("active", v.id===name));
 }
+tabs.forEach(t=>{
+  t.addEventListener("click", ()=>{
+    setActiveTab(t.dataset.tab);
+    if(t.dataset.tab==="home"){ loadTop5(); }
+    if(t.dataset.tab==="digest"){ renderFollowChips(); loadDigest(); }
+    if(t.dataset.tab==="habits"){ refreshHabitSelect(); renderHabitsUI(); }
+  });
+});
 
-// ========= Home (Top 5) =========
+/* =============== HOME: top5 =============== */
 const signalsRow = document.getElementById("signals");
 function showSkeletonRow(el, n=5){
-  el.innerHTML = "";
+  el.innerHTML="";
   for(let i=0;i<n;i++){
-    const d = document.createElement("div");
-    d.className = "signal-card skel";
-    d.innerHTML = `<div class="bar w"></div><div class="bar w2"></div><div class="bar w3"></div>`;
+    const d=document.createElement("div");
+    d.className="signal-card skel";
+    d.innerHTML=`<div class="bar w"></div><div class="bar w2"></div><div class="bar w3"></div>`;
     el.appendChild(d);
   }
 }
 async function loadTop5(){
-  signalsRow && showSkeletonRow(signalsRow, 5);
+  if(!signalsRow) return;
+  showSkeletonRow(signalsRow, 5);
   try{
     const res = await fetch(API("/api/signals/top5",{days:"2"}));
     const data = await res.json();
-    signalsRow.innerHTML = "";
-    (data.items||[]).forEach(item=>{
-      const div = document.createElement("div");
-      div.className = "signal-card";
-      const date = item.published_at ? new Date(item.published_at).toLocaleString() : "—";
+    signalsRow.innerHTML="";
+    (data.items||[]).forEach(it=>{
+      const div=document.createElement("div");
+      const date = it.published_at ? new Date(it.published_at).toLocaleString() : "—";
       const chips = [
-        item.category && item.category!=="all" ? `<span class="chip">${item.category}</span>` : "",
-        item.source ? `<span class="chip">${item.source}</span>` : ""
+        it.category && it.category!=="all" ? `<span class="chip">${it.category}</span>` : "",
+        it.source ? `<span class="chip">${it.source}</span>` : ""
       ].join(" ");
-      div.innerHTML = `
-        <h3>${item.title || "(untitled)"}</h3>
+      div.className="signal-card";
+      div.innerHTML=`
+        <h3>${it.title||"(untitled)"}</h3>
         <div class="chips">${chips}</div>
-        <p>${item.summary || ""}</p>
+        <p>${it.summary||""}</p>
         <div class="row-ends">
-          <small>${date}</small>
-          <a class="btn" href="${item.url}" target="_blank" rel="noopener">Open</a>
-        </div>`;
+          <small class="muted">${date}</small>
+          <a class="btn" href="${it.url}" target="_blank" rel="noopener">Open</a>
+        </div>
+      `;
       signalsRow.appendChild(div);
     });
   }catch{
@@ -61,40 +65,37 @@ async function loadTop5(){
   }
 }
 
-// ========= Global Search =========
+/* =============== global search =============== */
 const qInput = document.getElementById("q");
 const qBtn = document.getElementById("qbtn");
 qBtn?.addEventListener("click", doSearch);
-qInput?.addEventListener("keydown",(e)=>{ if(e.key==="Enter") doSearch(); });
+qInput?.addEventListener("keydown", e=>{ if(e.key==="Enter") doSearch(); });
 
 async function doSearch(){
-  const q = qInput.value.trim();
+  const q = (qInput.value||"").trim();
   if(!q) return;
   setActiveTab("feed");
-  scopeSel.value = "national"; catSel.value = ""; daysSel.value = "7";
-  setStepEnabled(5); updateHeadline();
-
-  grid.innerHTML = ""; showSkeleton(grid, 9);
+  scopeSel.value="national"; catSel.value=""; daysSel.value="7"; setStepEnabled(5); updateHeadline();
+  grid.innerHTML=""; showSkeleton(grid, 9);
   try{
     const res = await fetch(API("/api/search",{q,days:"7",deep:"0"}));
     const data = await res.json();
-    renderItemsToGrid(data.items || [], grid, empty);
+    renderItemsToGrid(data.items||[], grid, empty);
     headline.textContent = `Results for “${q}”`;
   }catch{
-    grid.innerHTML = ""; empty.style.display="block";
-    empty.textContent="Search failed.";
+    grid.innerHTML=""; empty.style.display="block"; empty.textContent="Search failed.";
   }
 }
 
-// ========= Digest (follow terms) =========
+/* =============== DIGEST (follow terms) =============== */
 const digestGrid = document.getElementById("digest-grid");
 const digestEmpty = document.getElementById("digest-empty");
 const followInput = document.getElementById("follow-input");
 const followAdd = document.getElementById("follow-add");
 const followChips = document.getElementById("follow-chips");
-const FOLLOW_KEY="nl_follow_terms";
-function getFollows(){ try{ const x=JSON.parse(localStorage.getItem(FOLLOW_KEY)||"[]"); return Array.isArray(x)?x:[]; }catch{return[];} }
-function saveFollows(a){ localStorage.setItem(FOLLOW_KEY, JSON.stringify(a)); renderFollowChips(); }
+const FOLLOW_KEY = "nl_follow_terms";
+const getFollows = ()=>{ try{const x=JSON.parse(localStorage.getItem(FOLLOW_KEY)||"[]");return Array.isArray(x)?x:[];}catch{return[];} };
+const saveFollows = a => { localStorage.setItem(FOLLOW_KEY, JSON.stringify(a)); renderFollowChips(); };
 function renderFollowChips(){
   const arr=getFollows(); followChips.innerHTML="";
   if(arr.length===0){ followChips.innerHTML=`<span class="muted">No terms followed yet.</span>`; return; }
@@ -113,9 +114,13 @@ async function loadDigest(){
     renderItemsToGrid(data.items||[], digestGrid, digestEmpty);
   }catch{ digestGrid.innerHTML=`<div class="empty">Digest error.</div>`; }
 }
-followAdd?.addEventListener("click",()=>{ const t=(followInput.value||"").trim(); if(!t) return; const cur=getFollows(); if(!cur.includes(t)) cur.push(t); saveFollows(cur); followInput.value=""; loadDigest(); });
+followAdd?.addEventListener("click", ()=>{
+  const t=(followInput.value||"").trim(); if(!t) return;
+  const cur=getFollows(); if(!cur.includes(t)) cur.push(t);
+  saveFollows(cur); followInput.value=""; loadDigest();
+});
 
-// ========= Feed (existing) =========
+/* =============== FEED (kept) =============== */
 const scopeSel=document.getElementById("scope");
 const stateSel=document.getElementById("state");
 const catSel=document.getElementById("category");
@@ -126,9 +131,7 @@ const grid=document.getElementById("grid");
 const empty=document.getElementById("empty");
 const headline=document.getElementById("headline");
 
-function populateStates(){
-  stateSel.innerHTML=""; STATES.forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; stateSel.appendChild(o); });
-}
+function populateStates(){ stateSel.innerHTML=""; STATES.forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; stateSel.appendChild(o); }); }
 function setStepEnabled(step){
   scopeSel.disabled= step<2;
   stateSel.disabled= !(step>=3 && scopeSel.value==="state");
@@ -136,14 +139,11 @@ function setStepEnabled(step){
 }
 function updateHeadline(){
   const sc=scopeSel.value; const cat=catSel.value||"All";
-  const days= daysSel.value ? `${daysSel.options[daysSel.selectedIndex].text}` : "Pick timeline";
+  const days = daysSel.value ? `${daysSel.options[daysSel.selectedIndex].text}` : "Pick timeline";
   if(!daysSel.value){ headline.textContent="Pick a timeline to start"; return; }
   headline.textContent = sc==="national" ? `Top ${capitalize(cat)} News — ${days}` : `${stateSel.value} — ${capitalize(cat)} News — ${days}`;
 }
-function showSkeleton(el, n=8){
-  el.innerHTML=""; empty.style.display="none";
-  for(let i=0;i<n;i++){ const d=document.createElement("div"); d.className="skel"; d.innerHTML=`<div class="bar w"></div><div class="bar w2"></div><div class="bar w3"></div><div class="bar w2"></div>`; el.appendChild(d); }
-}
+function showSkeleton(el,n=8){ el.innerHTML=""; empty.style.display="none"; for(let i=0;i<n;i++){ const d=document.createElement("div"); d.className="skel"; d.innerHTML=`<div class="bar w"></div><div class="bar w2"></div><div class="bar w3"></div><div class="bar w2"></div>`; el.appendChild(d); } }
 async function fetchNews(){
   if(!daysSel.value) return; updateHeadline(); showSkeleton(grid,9);
   const scope=scopeSel.value; const state= scope==="state"? stateSel.value : ""; const category=catSel.value;
@@ -155,7 +155,8 @@ async function fetchNews(){
   }catch{ grid.innerHTML=""; empty.style.display="block"; empty.textContent="Failed to load news."; }
 }
 function renderItemsToGrid(items, targetGrid, targetEmpty){
-  targetGrid.innerHTML=""; if(!items || items.length===0){ targetEmpty.style.display="block"; targetEmpty.textContent="No news found for your filters."; return; }
+  targetGrid.innerHTML="";
+  if(!items || items.length===0){ targetEmpty.style.display="block"; targetEmpty.textContent="No news found for your filters."; return; }
   targetEmpty.style.display="none";
   items.forEach(it=>{
     const d=document.createElement("div"); d.className="card";
@@ -165,7 +166,7 @@ function renderItemsToGrid(items, targetGrid, targetEmpty){
       <h3><a href="${it.url}" target="_blank" rel="noopener">${it.title || "(untitled)"}</a></h3>
       <div class="chips">${chips.join(" ")}</div>
       <p>${it.summary || ""}</p>
-      <div class="meta">${date}</div>`;
+      <div class="meta muted">${date}</div>`;
     targetGrid.appendChild(d);
   });
 }
@@ -176,230 +177,266 @@ catSel?.addEventListener("change", ()=>{ setStepEnabled(5); fetchNews(); });
 modeSel?.addEventListener("change", fetchNews);
 refreshBtn?.addEventListener("click", fetchNews);
 
-// ========= HABITS (NEW) =========
-/*
-Data model in localStorage:
-nl_habits = [
- { id: "h1", name:"Read", color:"#2563eb", history: {"2025-10-05": true, ... } },
- ...
-]
-*/
-const HAB_KEY="nl_habits";
-const $ = (id)=>document.getElementById(id);
+/* =============== HABITS =============== */
+const HAB_KEY="nl_habits";  // [{id,name,color,goal,remTime,remOn,history{date:bool}}]
+const $ = id => document.getElementById(id);
 
-const habitNameEl = $("habit-name");
-const habitColorEl = $("habit-color");
-const habitAddBtn = $("habit-add");
-const habitSelect = $("habit-select");
-const habitRenameBtn = $("habit-rename");
-const habitDeleteBtn = $("habit-delete");
+const habitNameEl=$("habit-name"), habitColorEl=$("habit-color"), habitAddBtn=$("habit-add");
+const habitSelect=$("habit-select"), habitGoalEl=$("habit-goal");
+const habitRemTime=$("habit-rem-time"), habitRemToggle=$("habit-rem-toggle");
+const habitRenameBtn=$("habit-rename"), habitDeleteBtn=$("habit-delete");
 
-const statCurrent = $("stat-current");
-const statBest = $("stat-best");
-const statMonth = $("stat-month");
+const statCurrent=$("stat-current"), statBest=$("stat-best"), statWeek=$("stat-week");
+const ring=$("goal-ring"), ringVal=$("ring-val");
 
-const calTitle = $("cal-title");
-const calGrid = $("cal-grid");
-const calPrev = $("cal-prev");
-const calNext = $("cal-next");
-const chartCanvas = $("habit-chart");
-let chartCtx = chartCanvas.getContext("2d");
+const calTitle=$("cal-title"), calGrid=$("cal-grid"), calPrev=$("cal-prev"), calNext=$("cal-next");
+const chartCanvas=$("habit-chart"); const ctx=chartCanvas.getContext("2d");
 
-let calCursor = new Date(); // month being shown
+let calCursor = new Date();
 
-function loadHabits(){
-  try{ const x=JSON.parse(localStorage.getItem(HAB_KEY)||"[]"); return Array.isArray(x)?x:[]; }catch{return[];}
-}
-function saveHabits(arr){ localStorage.setItem(HAB_KEY, JSON.stringify(arr)); }
-function ensureHabitSelected(){
-  const habits=loadHabits();
-  if(habits.length===0){ habitSelect.innerHTML=""; return null; }
-  if(!habitSelect.value){ habitSelect.value = habits[0].id; }
-  return habits.find(h=>h.id===habitSelect.value) || habits[0];
-}
+function loadHabits(){ try{const x=JSON.parse(localStorage.getItem(HAB_KEY)||"[]"); return Array.isArray(x)?x:[];}catch{return[];} }
+function saveHabits(a){ localStorage.setItem(HAB_KEY, JSON.stringify(a)); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 
 function refreshHabitSelect(){
-  const habits=loadHabits();
+  const arr=loadHabits();
   habitSelect.innerHTML="";
-  habits.forEach(h=>{
-    const opt=document.createElement("option");
-    opt.value=h.id; opt.textContent=h.name;
-    habitSelect.appendChild(opt);
-  });
+  arr.forEach(h=>{ const o=document.createElement("option"); o.value=h.id; o.textContent=h.name; habitSelect.appendChild(o); });
+}
+function ensureHabitSelected(){
+  const arr=loadHabits(); if(arr.length===0) return null;
+  if(!habitSelect.value) habitSelect.value=arr[0].id;
+  return arr.find(h=>h.id===habitSelect.value) || arr[0];
 }
 
+/* Shloka of the day (18 short verses) */
+const SHLOKAS = [
+  {ref:"1.1", dev:"धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः ।", tr:"On the field of dharma, the armies gather, eager for battle."},
+  {ref:"2.47", dev:"कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।", tr:"You have a right to action alone, not to its fruits."},
+  {ref:"2.48", dev:"योगस्थः कुरु कर्माणि सङ्गं त्यक्त्वा धनंजय ।", tr:"Established in yoga, perform your duty, abandoning attachment."},
+  {ref:"3.19", dev:"तस्मादसक्तः सततं कार्यं कर्म समाचर ।", tr:"Therefore, without attachment, constantly perform your proper work."},
+  {ref:"4.7",  dev:"यदा यदा हि धर्मस्य ग्लानिर्भवति भारत ।", tr:"Whenever righteousness declines, I manifest Myself."},
+  {ref:"4.13", dev:"चातुर्वर्ण्यं मया सृष्टं गुणकर्मविभागशः ।", tr:"I created the fourfold order according to qualities and work."},
+  {ref:"5.10", dev:"ब्रह्मण्याधाय कर्माणि सङ्गं त्यक्त्वा करोति यः ।", tr:"He who acts renouncing attachment is untouched by sin."},
+  {ref:"6.5",  dev:"उद्धरेदात्मनाऽत्मानं नात्मानमवसादयेत् ।", tr:"Lift yourself by yourself; do not degrade yourself."},
+  {ref:"6.26", dev:"यतो यतो निश्चरति मनश्चञ्चलमस्थिरम् ।", tr:"Wherever the restless mind wanders, bring it back under control."},
+  {ref:"7.7",  dev:"मत्तः परतरं नान्यत्किञ्चिदस्ति धनंजय ।", tr:"There is nothing whatsoever higher than Me, Arjuna."},
+  {ref:"8.7",  dev:"तस्मात्सर्वेषु कालेषु मामनुस्मर युध्य च ।", tr:"Therefore remember Me at all times and fight."},
+  {ref:"9.22", dev:"अनन्याश्चिन्तयन्तो मां ये जनाः पर्युपासते ।", tr:"Those who single-mindedly worship Me, I carry their needs."},
+  {ref:"10.20",dev:"अहमात्मा गुडाकेश सर्वभूताशयस्थितः ।", tr:"I am the Self seated in the hearts of all beings."},
+  {ref:"12.15",dev:"यस्मान्नोद्विजते लोको लोकान्नोद्विजते च यः ।", tr:"He by whom the world is not disturbed, and who is not disturbed by the world…"},
+  {ref:"13.2", dev:"क्षेत्रज्ञं चापि मां विद्धि सर्वक्षेत्रेषु भारत ।", tr:"Know Me as the knower in all bodies."},
+  {ref:"14.26",dev:"मां च योऽव्यभिचारेण भक्तियोगेन सेवते ।", tr:"He who serves Me with unwavering devotion transcends the gunas."},
+  {ref:"16.3", dev:"तेजः क्षमा धृतिः शौचम् अद्रोहो नातिमानिता ।", tr:"Vigor, forgiveness, fortitude, purity, non-injury, humility…"},
+  {ref:"18.66",dev:"सर्वधर्मान् परित्यज्य मामेकं शरणं व्रज ।", tr:"Abandon all duties and take refuge in Me alone."}
+];
+function renderShloka(){
+  const idx = (Math.floor((Date.now()/86400000)) % SHLOKAS.length);
+  const s = SHLOKAS[idx];
+  document.getElementById("sh-ref").textContent = `Gita ${s.ref}`;
+  document.getElementById("sh-dev").textContent = s.dev;
+  document.getElementById("sh-trans").textContent = s.tr;
+}
+
+/* Habit CRUD */
 habitAddBtn?.addEventListener("click", ()=>{
   const name=(habitNameEl.value||"").trim(); if(!name) return;
-  const color=habitColorEl.value || "#2563eb";
-  const arr=loadHabits(); arr.push({id:uid(), name, color, history:{}});
+  const color=habitColorEl.value||"#7c3aed";
+  const arr=loadHabits(); arr.push({id:uid(), name, color, goal:5, remTime:null, remOn:false, history:{}});
   saveHabits(arr); habitNameEl.value=""; refreshHabitSelect(); renderHabitsUI();
 });
 habitRenameBtn?.addEventListener("click", ()=>{
-  const habits=loadHabits(); if(habits.length===0) return;
-  const h = ensureHabitSelected(); if(!h) return;
+  const arr=loadHabits(); if(arr.length===0) return;
+  const h=ensureHabitSelected(); if(!h) return;
   const next = prompt("New name", h.name); if(!next) return;
-  h.name = next; saveHabits(habits); refreshHabitSelect(); habitSelect.value=h.id; renderHabitsUI();
+  h.name = next; saveHabits(arr); refreshHabitSelect(); habitSelect.value=h.id; renderHabitsUI();
 });
 habitDeleteBtn?.addEventListener("click", ()=>{
-  const habits=loadHabits(); if(habits.length===0) return;
+  const arr=loadHabits(); if(arr.length===0) return;
   const h=ensureHabitSelected(); if(!h) return;
   if(!confirm(`Delete habit “${h.name}”?`)) return;
-  saveHabits(habits.filter(x=>x.id!==h.id));
-  refreshHabitSelect(); renderHabitsUI();
+  saveHabits(arr.filter(x=>x.id!==h.id)); refreshHabitSelect(); renderHabitsUI();
 });
 habitSelect?.addEventListener("change", renderHabitsUI);
-calPrev?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderCalendar(); });
-calNext?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderCalendar(); });
 
-function renderHabitsUI(){
-  const h = ensureHabitSelected();
-  if(!h){
-    calTitle.textContent="Create a habit to start";
-    calGrid.innerHTML=`<div class="empty">No habits yet. Add one above.</div>`;
-    statCurrent.textContent="0"; statBest.textContent="0"; statMonth.textContent="0%";
-    drawChart([]); return;
+/* Goals */
+habitGoalEl?.addEventListener("change", ()=>{
+  let v=Number(habitGoalEl.value||5); v=Math.min(7, Math.max(1,v));
+  const arr=loadHabits(); const h=ensureHabitSelected(); if(!h) return;
+  h.goal=v; saveHabits(arr); renderHabitsUI();
+});
+
+/* Reminder (local Notification API) */
+habitRemToggle?.addEventListener("click", async ()=>{
+  const arr=loadHabits(); const h=ensureHabitSelected(); if(!h) return;
+  const t = habitRemTime.value;
+  if(!h.remOn){
+    if(Notification && Notification.permission!=="granted"){
+      await Notification.requestPermission();
+    }
+    h.remTime = t || "20:00";
+    h.remOn = true;
+  }else{
+    h.remOn = false;
   }
-  renderCalendar();
+  saveHabits(arr); renderHabitsUI();
+});
+setInterval(()=>{ // simple local “scheduler”
+  const arr=loadHabits();
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,"0");
+  const mm = String(now.getMinutes()).padStart(2,"0");
+  const cur = `${hh}:${mm}`;
+  arr.forEach(h=>{
+    if(h.remOn && h.remTime===cur){
+      try{
+        new Notification("Habit reminder", { body:`${h.name} — time to check in!` });
+      }catch{}
+    }
+  });
+}, 60*1000);
+
+/* Calendar + stats */
+let calCursorMonth = new Date();
+function renderHabitsUI(){
+  renderShloka();
+
+  const arr=loadHabits();
+  if(arr.length===0){
+    calTitle.textContent="Create a habit to start";
+    calGrid.innerHTML = `<div class="empty">No habits yet. Add one above.</div>`;
+    statCurrent.textContent="0"; statBest.textContent="0"; statWeek.textContent="0/7"; updateRing(0);
+    drawChart([]);
+    return;
+  }
+  const h=ensureHabitSelected(); if(!h) return;
+  habitGoalEl.value = h.goal||5;
+  habitRemTime.value = h.remTime||"";
+  habitRemToggle.textContent = h.remOn ? "Disable" : "Enable";
+
+  renderCalendar(h);
   const stats = computeStats(h);
-  statCurrent.textContent = String(stats.currentStreak);
-  statBest.textContent = String(stats.bestStreak);
-  statMonth.textContent = `${Math.round(stats.monthPercent)}%`;
+  statCurrent.textContent=String(stats.currentStreak);
+  statBest.textContent=String(stats.bestStreak);
+  statWeek.textContent=`${stats.thisWeek}/${h.goal||5}`;
+  const pct = Math.min(100, Math.round((stats.thisWeek / (h.goal||5))*100));
+  updateRing(pct);
   drawChart(stats.weekly);
 }
-
-function renderCalendar(){
-  const h = ensureHabitSelected();
-  if(!h){ return; }
-  const year = calCursor.getFullYear();
-  const month = calCursor.getMonth();
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month+1, 0);
-  const startWeekday = (first.getDay()+6)%7; // Mon=0
-  const daysCount = last.getDate();
-
-  calTitle.textContent = `${first.toLocaleString("default",{month:"long"})} ${year}`;
+function renderCalendar(h){
+  const y=calCursor.getFullYear(), m=calCursor.getMonth();
+  const first=new Date(y,m,1), last=new Date(y,m+1,0);
+  const start=((first.getDay()+6)%7); const days=last.getDate();
+  calTitle.textContent = `${first.toLocaleString("default",{month:"long"})} ${y}`;
   calGrid.innerHTML = `
     <div class="cal-wd">Mon</div><div class="cal-wd">Tue</div><div class="cal-wd">Wed</div>
     <div class="cal-wd">Thu</div><div class="cal-wd">Fri</div><div class="cal-wd">Sat</div><div class="cal-wd">Sun</div>
   `;
-  for(let i=0;i<startWeekday;i++){
-    const pad=document.createElement("div"); pad.className="cal-cell pad"; calGrid.appendChild(pad);
-  }
-  for(let d=1; d<=daysCount; d++){
-    const date = new Date(year, month, d);
-    const key = fmtDate(date);
-    const cell = document.createElement("button");
-    cell.className = "cal-cell day";
-    const done = !!(h.history && h.history[key]);
-    cell.innerHTML = `<span class="num">${d}</span>`;
-    if(done) cell.classList.add("done");
-    cell.style.setProperty("--accent", h.color || "#2563eb");
-    cell.onclick = ()=>{
-      const habits=loadHabits();
-      const me = habits.find(x=>x.id===h.id);
-      if(!me.history) me.history={};
-      me.history[key] = !me.history[key];
-      saveHabits(habits);
-      renderHabitsUI();
+  for(let i=0;i<start;i++){ const pad=document.createElement("div"); pad.className="cal-cell pad"; calGrid.appendChild(pad); }
+  for(let d=1; d<=days; d++){
+    const date=new Date(y,m,d), key=fmtDate(date);
+    const cell=document.createElement("button"); cell.className="cal-cell day";
+    cell.innerHTML=`<span class="num">${d}</span>`;
+    if(h.history && h.history[key]) cell.classList.add("done");
+    cell.style.setProperty("--accent", h.color||"#7c3aed");
+    cell.onclick=()=>{
+      const arr=loadHabits(); const me=arr.find(x=>x.id===h.id);
+      if(!me.history) me.history={}; me.history[key]=!me.history[key];
+      saveHabits(arr); renderHabitsUI();
     };
     calGrid.appendChild(cell);
   }
 }
+calPrev?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderHabitsUI(); });
+calNext?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderHabitsUI(); });
 
 function computeStats(h){
-  const today = new Date();
-  const todayKey = fmtDate(today);
-
-  // current streak (walk back from today)
-  let streak = 0;
-  let ptr = new Date(today);
-  while(true){
-    const k = fmtDate(ptr);
-    if(h.history && h.history[k]) { streak++; ptr.setDate(ptr.getDate()-1); }
-    else break;
-  }
-
-  // best streak in last 180 days
-  let best = 0, cur=0;
-  const back = new Date(); back.setDate(back.getDate()-180);
+  const today=new Date(); today.setHours(0,0,0,0);
+  // current streak
+  let streak=0; const p=new Date(today);
+  while(true){ const k=fmtDate(p); if(h.history&&h.history[k]){ streak++; p.setDate(p.getDate()-1);} else break; }
+  // best streak (last 180d)
+  let best=0, cur=0; const back=new Date(today); back.setDate(back.getDate()-180);
   for(let d=new Date(back); d<=today; d.setDate(d.getDate()+1)){
-    const k=fmtDate(d);
-    if(h.history && h.history[k]) { cur++; best=Math.max(best,cur); }
-    else cur=0;
+    const k=fmtDate(d); if(h.history&&h.history[k]){cur++;best=Math.max(best,cur);} else cur=0;
   }
-
-  // this month % complete
-  const year = calCursor.getFullYear();
-  const month = calCursor.getMonth();
-  const last = new Date(year, month+1, 0);
-  let have=0, total=last.getDate();
-  for(let i=1;i<=total;i++){
-    const k=fmtDate(new Date(year,month,i));
-    if(h.history && h.history[k]) have++;
+  // this week count (Mon..Sun)
+  const dow=(today.getDay()+6)%7; const mon=new Date(today); mon.setDate(today.getDate()-dow);
+  let w=0; for(let d=new Date(mon); d<=today; d.setDate(d.getDate()+1)){ const k=fmtDate(d); if(h.history&&h.history[k]) w++; }
+  // 8 weeks trend
+  const weekly=[]; const end=new Date(today);
+  for(let i=7;i>=0;i--){
+    const start=new Date(end); start.setDate(end.getDate() - (i*7 + 6));
+    const stop =new Date(end); stop.setDate(end.getDate() - (i*7));
+    let c=0; for(let d=new Date(start); d<=stop; d.setDate(d.getDate()+1)){ if(h.history&&h.history[fmtDate(d)]) c++; }
+    weekly.push(c);
   }
-  const monthPercent = total? (have*100/total) : 0;
-
-  // weekly completion counts for last 8 weeks
-  const weekly=[];
-  const end = new Date(today); end.setHours(0,0,0,0);
-  for(let w=7; w>=0; w--){
-    const start = new Date(end); start.setDate(end.getDate() - (w*7 + 6));
-    const stop  = new Date(end); stop.setDate(end.getDate() - (w*7));
-    let count=0;
-    for(let d=new Date(start); d<=stop; d.setDate(d.getDate()+1)){
-      const k=fmtDate(d);
-      if(h.history && h.history[k]) count++;
-    }
-    weekly.push(count);
-  }
-
-  return { currentStreak: streak, bestStreak: best, monthPercent, weekly };
+  return { currentStreak:streak, bestStreak:best, thisWeek:w, weekly };
 }
-
+function updateRing(pct){
+  const C=2*Math.PI*16;
+  ring.style.strokeDasharray = `${C}`;
+  ring.style.strokeDashoffset = `${C*(1-pct/100)}`;
+  ringVal.textContent = `${pct}%`;
+}
 function drawChart(weekly){
-  // minimalist line chart
-  const ctx=chartCtx; const W=chartCanvas.width=chartCanvas.clientWidth; const H=chartCanvas.height=120;
-  ctx.clearRect(0,0,W,H);
-  if(!weekly || weekly.length===0){ return; }
-  const max = Math.max(...weekly, 7);
-  const stepX = W/(weekly.length-1);
-  const scaleY = (H-20)/max;
-
-  ctx.lineWidth=2; ctx.strokeStyle="#4f46e5";
-  ctx.beginPath();
-  weekly.forEach((v,i)=>{
-    const x = i*stepX;
-    const y = H - 10 - v*scaleY;
-    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-  });
-  ctx.stroke();
-
-  // baseline + dots
-  ctx.strokeStyle="#e5e7eb"; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(0,H-10); ctx.lineTo(W,H-10); ctx.stroke();
-
-  ctx.fillStyle="#4f46e5";
-  weekly.forEach((v,i)=>{
-    const x=i*stepX, y=H-10-v*scaleY;
-    ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
-  });
+  const W=chartCanvas.width=chartCanvas.clientWidth; const H=chartCanvas.height=120;
+  ctx.clearRect(0,0,W,H); if(!weekly || weekly.length===0) return;
+  const max=Math.max(...weekly,7), stepX=W/(weekly.length-1), scaleY=(H-20)/max;
+  ctx.lineWidth=2; ctx.strokeStyle="#7c3aed"; ctx.beginPath();
+  weekly.forEach((v,i)=>{ const x=i*stepX, y=H-10-v*scaleY; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }); ctx.stroke();
+  ctx.strokeStyle="#e5e7eb"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,H-10); ctx.lineTo(W,H-10); ctx.stroke();
+  ctx.fillStyle="#7c3aed"; weekly.forEach((v,i)=>{ const x=i*stepX, y=H-10-v*scaleY; ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill(); });
 }
 
-// ========= Boot & tab wiring =========
-tabs.forEach(t=>{
-  t.addEventListener("click", ()=>{
-    setActiveTab(t.dataset.tab);
-    if(t.dataset.tab==="home"){ loadTop5(); }
-    if(t.dataset.tab==="digest"){ renderFollowChips(); loadDigest(); }
-    if(t.dataset.tab==="habits"){ refreshHabitSelect(); renderHabitsUI(); }
+/* Export CSV (all habits) */
+document.getElementById("csv-export")?.addEventListener("click", ()=>{
+  const arr=loadHabits(); const rows=[["habit_id","habit_name","date","done"]];
+  arr.forEach(h=>{
+    Object.keys(h.history||{}).forEach(k=>{
+      rows.push([h.id,h.name,k,String(!!h.history[k])]);
+    });
   });
+  const csv = rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="habits.csv"; a.click(); URL.revokeObjectURL(url);
 });
 
+/* Export iCal reminders (next 30 days) for selected habit */
+document.getElementById("ics-export")?.addEventListener("click", ()=>{
+  const h=ensureHabitSelected(); if(!h){ alert("Add a habit first"); return; }
+  const tm=h.remTime||"20:00"; const [hh,mm]=tm.split(":").map(Number);
+  const lines=[
+    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//NewsLens//Habits//EN"
+  ];
+  const now=new Date();
+  for(let i=0;i<30;i++){
+    const d=new Date(now); d.setDate(now.getDate()+i);
+    d.setHours(hh||20, mm||0, 0, 0);
+    const dt = d.toISOString().replace(/[-:]/g,"").split(".")[0]+"Z";
+    const uid = `nl-${h.id}-${i}@newslens`;
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${dt}`,
+      `DTSTART:${dt}`,
+      `SUMMARY:${h.name} – Habit Reminder`,
+      "END:VEVENT"
+    );
+  }
+  lines.push("END:VCALENDAR");
+  const blob=new Blob([lines.join("\r\n")],{type:"text/calendar"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=`${h.name}-reminders.ics`; a.click(); URL.revokeObjectURL(url);
+});
+
+/* Calendar nav */
+calPrev?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderHabitsUI(); });
+calNext?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderHabitsUI(); });
+
+/* ===== init ===== */
 function init(){
-  // home
   loadTop5();
-  // feed
   populateStates(); setStepEnabled(1); updateHeadline();
 }
 init();
