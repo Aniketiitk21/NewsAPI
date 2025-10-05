@@ -1,31 +1,34 @@
-# backend/app.py
 import os
 import pathlib
 import re
 import uvicorn
+import random
 from typing import Optional, List, Dict, Any
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
-from fastapi import FastAPI, Query, HTTPException
+import httpx
+import feedparser
+
+from fastapi import FastAPI, Query, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.aggregator.fetch import get_news
 from backend.aggregator.utils import safe_int
-
-# ---- NEW: httpx for live Shloka fetch ----
-import httpx
+from backend.aggregator.summarize import summarize_rule_based
+from backend.aggregator.utils import strip_html
 
 APP_NAME = os.getenv("APP_NAME", "NewsLens")
 ENV = os.getenv("ENV", "prod")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-app = FastAPI(title=f"{APP_NAME} API", version="2.3.0")
+app = FastAPI(title=f"{APP_NAME} API", version="2.4.0")
 
-# ---- No-cache assets (so app.js & CSS refresh instantly) --------------------
+# ---------- no-cache for static assets ----------
 class NoCacheAssets(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         resp = await call_next(request)
@@ -35,7 +38,7 @@ class NoCacheAssets(BaseHTTPMiddleware):
 
 app.add_middleware(NoCacheAssets)
 
-# ---- Serve the frontend -----------------------------------------------------
+# ---------- static / frontend ----------
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "frontend"
 ASSETS_DIR = ROOT / "assets"
 INDEX_HTML = ROOT / "index.html"
@@ -56,29 +59,29 @@ def favicon():
         return FileResponse(FAVICON)
     return FileResponse(INDEX_HTML) if INDEX_HTML.exists() else {"ok": True}
 
-# ---- CORS (GET-only; safe for public) --------------------------------------
+# ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_origin_regex=".*",
     allow_credentials=False,
-    allow_methods=["GET", "HEAD", "OPTIONS"],
+    allow_methods=["GET", "HEAD", "OPTIONS", "POST"],
     allow_headers=["*"],
 )
 
-# ---- Models -----------------------------------------------------------------
+# ---------- models ----------
 class NewsResponse(BaseModel):
     items: List[Dict[str, Any]]
 
 class TrendingResponse(BaseModel):
     terms: List[Dict[str, Any]]
 
-# ---- Health -----------------------------------------------------------------
+# ---------- health ----------
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": APP_NAME}
 
-# ---- Main news API ----------------------------------------------------------
+# ---------- main news ----------
 @app.get("/api/news", response_model=NewsResponse)
 def api_news(
     scope: str = Query("national", pattern="^(national|state)$"),
@@ -98,12 +101,11 @@ def api_news(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to fetch news") from e
 
-# ========== Discovery endpoints used by the new UI ===========================
+# ---------- discovery endpoints used by UI ----------
 STOPWORDS = set("""
 a an and are as at be by for from has have he her his i in is it its of on or our so
 that the their them there they this to was were will with you your
 """.split())
-
 WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9\-\&]{2,}")
 
 def _extract_terms(title: str, summary: str) -> List[str]:
@@ -112,7 +114,7 @@ def _extract_terms(title: str, summary: str) -> List[str]:
     terms = []
     for w in words:
         u = w.strip().title()
-        if len(u) < 3:
+        if len(u) < 3: 
             continue
         if u.lower() in STOPWORDS:
             continue
@@ -132,7 +134,6 @@ def _filter_items(items: List[Dict[str, Any]], q: Optional[str]) -> List[Dict[st
 
 @app.get("/api/signals/top5", response_model=NewsResponse)
 def api_top5(days: int = Query(2, ge=1, le=14)):
-    """Pick a diversified 5 from national feed for Home."""
     base = get_news("national", None, None, days, 150, "light")
     buckets = {"finance": [], "education": [], "sports": [], "tech": [], "general": []}
     for it in base:
@@ -148,18 +149,15 @@ def api_top5(days: int = Query(2, ge=1, le=14)):
             buckets["tech"].append(it)
         else:
             buckets["general"].append(it)
-
     picked: List[Dict[str,Any]] = []
     for key in ["finance","education","sports","tech","general"]:
         if buckets[key]:
             picked.append(buckets[key][0])
-        if len(picked) == 5:
-            break
-
+        if len(picked) == 5: break
     if len(picked) < 5:
         seen = set(x["url"] for x in picked)
         for it in base:
-            if it["url"] in seen:
+            if it["url"] in seen: 
                 continue
             picked.append(it)
             if len(picked) == 5:
@@ -201,7 +199,6 @@ def api_digest(follow: str = Query("", description="Comma separated follow terms
         blob = f"{it.get('title','')} {it.get('summary','')} {it.get('source','')}".lower()
         if any(t in blob for t in lo):
             hits.append(it)
-    # de-dupe by url
     seen, uniq = set(), []
     for it in hits:
         u = it["url"]
@@ -211,7 +208,89 @@ def api_digest(follow: str = Query("", description="Comma separated follow terms
         uniq.append(it)
     return {"items": uniq[:60]}
 
-# ---- Topic feeds (RSS) ------------------------------------------------------
+# ---------- RSS → curated topics ----------
+CURATED_FEEDS: Dict[str, List[str]] = {
+    # Finance / Markets (top, stable publishers)
+    "finance": [
+        "https://www.moneycontrol.com/rss/MCtopnews.xml",
+        "https://www.livemint.com/rss/markets",
+        "https://www.financialexpress.com/feed/",
+        "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prrss=1",  # some pages won’t be RSS; the parser will skip
+        "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
+    ],
+    # Business / Startup
+    "startup": [
+        "https://inc42.com/feed/",
+        "https://yourstory.com/feed",
+        "https://techcrunch.com/startups/feed/",
+        "https://the-ken.com/feed/",
+    ],
+    # Science / AI
+    "ai": [
+        "https://www.analyticsindiamag.com/feed/",
+        "https://ai.googleblog.com/atom.xml",
+        "https://openaccess.thecvf.com/rss.xml",   # CVF papers RSS
+        "https://arxiv.org/rss/cs.CV",
+    ],
+}
+
+def _parse_pub(entry):
+    t = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
+    if not t: return None
+    try:
+        return datetime(*t[:6], tzinfo=timezone.utc).isoformat()
+    except Exception:
+        return None
+
+def _rss_curated(topic: str, days: int, limit: int) -> List[Dict[str, Any]]:
+    urls = CURATED_FEEDS.get(topic, [])
+    out: List[Dict[str,Any]] = []
+    seen = set()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    for url in urls:
+        try:
+            feed = feedparser.parse(url)
+            entries = getattr(feed, "entries", [])[:120]
+            src = ""
+            try: src = feed.feed.get("title","")
+            except: pass
+            for e in entries:
+                link = (e.get("link") or "").strip()
+                title = (e.get("title") or "").strip()
+                if not link or not title: continue
+                norm = link.split("?",1)[0].rstrip("/")
+                if norm in seen: continue
+                pub = _parse_pub(e)
+                if pub:
+                    try:
+                        if datetime.fromisoformat(pub.replace("Z","+00:00")) < cutoff:
+                            continue
+                    except: pass
+                desc = strip_html(e.get("summary") or e.get("description") or "")
+                summary = summarize_rule_based(title, desc, 900) or desc[:900]
+                out.append({
+                    "title": title,
+                    "url": norm,
+                    "published_at": pub,
+                    "summary": summary,
+                    "source": src,
+                    "category": topic
+                })
+                seen.add(norm)
+                if len(out) >= limit: break
+        except Exception:
+            continue
+        if len(out) >= limit: break
+    out.sort(key=lambda x: x.get("published_at") or "", reverse=True)
+    return out
+
+@app.get("/api/curated", response_model=NewsResponse)
+def api_curated(topic: str = Query(..., pattern="^(finance|startup|ai)$"),
+                days: int = Query(3, ge=1, le=14),
+                limit: int = Query(60, ge=1, le=200)):
+    return {"items": _rss_curated(topic, days, limit)}
+
+# ---------- topic RSS feed ----------
 @app.get("/feed/{topic}.xml", include_in_schema=False)
 def feed(topic: str):
     items = get_news("national", None, topic if topic!="all" else None, days=2, limit=50, fetch_mode="light")
@@ -234,92 +313,57 @@ def feed(topic: str):
     </channel></rss>"""
     return Response(content=xml, media_type="application/rss+xml")
 
-# ---- Shloka of the Day from authentic source -------------------------------
-# We cycle deterministically through all 700 verses to avoid 404s on chapters
-# with fewer verses, then fetch the selected verse from bhagavadgitaapi.in.
-# Optional override:
-#   SHLOKA_API_URL = "https://bhagavadgitaapi.in/slok"
-SHLOKA_API_BASE = os.getenv("SHLOKA_API_URL", "https://bhagavadgitaapi.in/slok")
-
-# Verses per chapter (1..18) = 700 total
-CH_VERSE_COUNTS = [
-    47, 72, 43, 42, 29, 47, 30, 28, 34,
-    42, 55, 20, 35, 27, 20, 24, 28, 78
-]
-CH_CUMSUM = []
-_total = 0
-for c in CH_VERSE_COUNTS:
-    _total += c
-    CH_CUMSUM.append(_total)  # cumulative totals; last == 700
-
-def _pick_daily_chapter_verse(day_index: int) -> (int, int):
-    """Map a day index -> (chapter, verse), covering all 700 verses in a loop."""
-    total = CH_CUMSUM[-1]  # 700
-    # 1..700
-    k = (day_index % total) + 1
-    # find chapter
-    ch = 1
-    prev = 0
-    for i, csum in enumerate(CH_CUMSUM, start=1):
-        if k <= csum:
-            ch = i
-            prev = CH_CUMSUM[i-2] if i > 1 else 0
-            break
-    v = k - prev
-    return ch, v
-
+# ---------- Shloka of the Day (authentic proxy with cache & graceful fallback) ----------
+_SHLOKA_CACHE: Dict[str, Any] = {}
 @app.get("/api/shloka/daily")
 def shloka_daily():
-    """
-    Deterministic daily shloka:
-      - Computes (chapter, verse) from current day number covering all 700 verses.
-      - Fetches verse from bhagavadgitaapi.in (authentic source).
-      - Gracefully falls back by trying next verses if a particular verse 404s.
-    """
+    key = datetime.utcnow().strftime("%Y-%m-%d")
+    if key in _SHLOKA_CACHE:
+        return _SHLOKA_CACHE[key]
     try:
-        # Day index based on UTC days since epoch (stable across users)
-        day_index = int(datetime.now(timezone.utc).timestamp()) // 86400
-        ch, v = _pick_daily_chapter_verse(day_index)
-
-        # Try up to 3 consecutive verses in case one endpoint is missing
-        for offset in range(3):
-            ch_try, v_try = ch, v + offset
-            # if verse exceeds the chapter's verse count, wrap to next chapter
-            if v_try > CH_VERSE_COUNTS[ch_try - 1]:
-                ch_try += 1
-                if ch_try > 18:
-                    ch_try = 1
-                v_try = 1
-
-            url = f"{SHLOKA_API_BASE}/{ch_try}/{v_try}/"
-            r = httpx.get(url, timeout=8.0)
-            if r.status_code == 200:
-                data = r.json()
-                # translation keys can vary; prefer 'translation', fallback to others if present
-                tr = (
-                    data.get("translation")
-                    or data.get("en")
-                    or data.get("tej")
-                    or data.get("siva")
-                    or "—"
-                )
-                return {
-                    "ref": f"{data.get('chapter', ch_try)}.{data.get('verse', v_try)}",
-                    "dev": data.get("slok"),
-                    "tr": tr
-                }
-
-        # Upstream failed repeatedly
-        raise RuntimeError("shloka upstream unavailable")
+        ch = random.randint(1, 18)
+        v = random.randint(1, 72)
+        url = f"https://bhagavadgitaapi.in/slok/{ch}/{v}/"
+        with httpx.Client(timeout=8.0) as client:
+            r = client.get(url)
+        if r.status_code == 200:
+            data = r.json()
+            obj = {
+                "ref": f"{data.get('chapter')}.{data.get('verse')}",
+                "dev": data.get("slok") or "",
+                "tr": data.get("te") or data.get("et") or data.get("siva") or data.get("translation") or ""
+            }
+            if obj["dev"]:
+                _SHLOKA_CACHE[key] = obj
+                return obj
     except Exception:
-        # Soft fallback: a very common verse; still avoid hardcoding list
-        return {
-            "ref": "2.47",
-            "dev": "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।",
-            "tr": "You have a right to action alone, not to its fruits."
-        }
+        pass
+    fallback = {"ref": "2.47", "dev": "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।", "tr": "You have a right to action alone, not to its fruits."}
+    _SHLOKA_CACHE[key] = fallback
+    return fallback
 
-# ---- Entrypoint -------------------------------------------------------------
+# ---------- Chat (Gemini) ----------
+class ChatIn(BaseModel):
+    message: str
+
+@app.post("/api/chat")
+def chat_api(body: ChatIn = Body(...)):
+    if not GEMINI_API_KEY:
+        return JSONResponse({"text": "Gemini API key missing on server."}, status_code=500)
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {"contents":[{"parts":[{"text": body.message[:5000]}]}]}
+        with httpx.Client(timeout=15.0) as client:
+            r = client.post(url, json=payload)
+        if r.status_code != 200:
+            return JSONResponse({"text": f"Gemini error: {r.text[:200]}"} , status_code=500)
+        data = r.json()
+        out = data.get("candidates",[{}])[0].get("content",{}).get("parts",[{}])[0].get("text","")
+        return {"text": out or "No response."}
+    except Exception as e:
+        return JSONResponse({"text": f"Gemini request failed: {e.__class__.__name__}"}, status_code=500)
+
+# ---------- entry ----------
 if __name__ == "__main__":
     uvicorn.run(
         "backend.app:app",
