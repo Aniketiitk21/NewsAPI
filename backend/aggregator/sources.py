@@ -1,4 +1,3 @@
-# backend/aggregator/sources.py
 from typing import Dict, List
 
 # National feeds
@@ -10,7 +9,7 @@ NATIONAL_FEEDS: List[str] = [
     "https://www.ndtv.com/rss",
 ]
 
-# State feeds (expandable; a few per state keeps it fast on free hosts)
+# State feeds (expand slowly; Render free dynos appreciate small lists)
 STATE_FEEDS: Dict[str, List[str]] = {
     "Andhra Pradesh": [
         "https://www.thehindu.com/news/national/andhra-pradesh/feeder/default.rss",
@@ -39,7 +38,7 @@ STATE_FEEDS: Dict[str, List[str]] = {
         "https://www.newindianexpress.com/States/Kerala/rssfeed/?id=178&getXmlFeed=true",
     ],
     "Maharashtra": [
-        "https://www.thehindu.com/news/national/other-states/feeder/default.rss",  # wide bucket
+        "https://www.thehindu.com/news/national/other-states/feeder/default.rss",
         "https://indianexpress.com/section/cities/mumbai/feed/",
         "https://www.hindustantimes.com/feeds/rss/cities/mumbai-news/rssfeed.xml",
     ],
@@ -88,5 +87,4 @@ STATE_FEEDS: Dict[str, List[str]] = {
         "https://www.hindustantimes.com/feeds/rss/cities/delhi-news/rssfeed.xml",
         "https://timesofindia.indiatimes.com/rssfeeds/3947062.cms",
     ],
-    # Add more states gradually…
 }
