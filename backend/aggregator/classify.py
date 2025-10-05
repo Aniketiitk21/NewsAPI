@@ -1,16 +1,18 @@
-# backend/aggregator/classify.py
 import re
 from typing import Dict, List, Optional
 from .config import POS_WORDS, NEG_WORDS, RULING_PARTY_BY_STATE
 
+# Generic governance anchors – neutral and widely-used tokens
 GOV_TERMS_GENERIC = [
     r"\bgovernment\b", r"\bgovt\b", r"\bstate government\b", r"\badministration\b",
-    r"\bchief minister\b", r"\bcm\b", r"\bcabinet\b", r"\bsecretariat\b"
+    r"\bchief minister\b", r"\bcm\b", r"\bcabinet\b", r"\bsecretariat\b",
+    r"\bministry\b", r"\bdepartment\b"
 ]
 
 def _window_hits(text: str, center_terms: List[str], cue_words: List[str], win: int = 70) -> int:
+    """Count cue words within ±win chars of any governance term."""
     t = text.lower()
-    idxs = []
+    idxs: List[int] = []
     for c in center_terms:
         for m in re.finditer(c, t):
             idxs.append(m.start())
@@ -25,6 +27,10 @@ def _window_hits(text: str, center_terms: List[str], cue_words: List[str], win: 
     return hits
 
 def stance_for_state_politics(text: str, state: Optional[str]) -> Dict:
+    """
+    Lightweight, explainable stance around governance mentions.
+    Not party-specific; returns a soft 'governance tone' near generic gov anchors.
+    """
     ruling = RULING_PARTY_BY_STATE.get(state or "", None)
     if not ruling:
         return {"label": "neutral", "confidence": 0.45}
