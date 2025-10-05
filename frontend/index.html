@@ -1,31 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8"/>
   <title>NewsLens • Signals</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="assets/main.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="stylesheet" href="assets/main.css?v=2025-10-05-d6"/>
 </head>
 <body>
-
-  <!-- Login Gate (very simple, rule-based) -->
-  <div id="login-overlay" class="login-overlay" aria-hidden="true">
-    <div class="login-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
-      <h2 id="login-title">Welcome to <span class="brand-mono">NewsLens</span></h2>
-      <p class="muted">Sign in to continue</p>
-      <div class="login-fields">
-        <label>Username</label>
-        <input id="login-user" autocomplete="username" placeholder="Enter username" />
-        <label>Password</label>
-        <input id="login-pass" type="password" autocomplete="current-password" placeholder="Enter password" />
-      </div>
-      <div class="login-actions">
-        <button id="login-btn" class="primary">Sign in</button>
-        <div id="login-err" class="login-err" role="alert" style="display:none;"></div>
-      </div>
-      <div class="muted small tips">
-        Hint: <code>sandhanar21</code> / <code>Bharat@1947</code>
-      </div>
+  <!-- Login gate -->
+  <div id="login-overlay" class="login-overlay hidden">
+    <div class="login-card">
+      <h2>Welcome to NewsLens</h2>
+      <p class="muted">Sign in to continue.</p>
+      <label>Username</label>
+      <input id="lg-user" placeholder="username"/>
+      <label>Password</label>
+      <input id="lg-pass" placeholder="password" type="password"/>
+      <button id="lg-btn" class="primary">Sign in</button>
+      <div id="lg-msg" class="muted small"></div>
     </div>
   </div>
 
@@ -33,7 +25,7 @@
   <header class="topbar sticky">
     <div class="brand">⚡ NewsLens <span class="muted">Signals</span></div>
     <div class="searchbar">
-      <input id="q" type="search" placeholder="Search IPO, JEE, Infosys, Cricket, Metro…" />
+      <input id="q" type="search" placeholder="Search IPO, JEE, Infosys, Cricket, Metro…"/>
       <button id="qbtn">Search</button>
     </div>
   </header>
@@ -43,21 +35,18 @@
     <button class="tab active" data-tab="home">Home</button>
     <button class="tab" data-tab="feed">Feed</button>
     <button class="tab" data-tab="habits">Habits</button>
+    <button class="tab" data-tab="finance">Finance</button>
+    <button class="tab" data-tab="startup">Startup</button>
+    <button class="tab" data-tab="ai">AI</button>
+    <button class="tab" data-tab="chat">Chat</button>
     <button class="tab" data-tab="digest">My Digest</button>
   </nav>
 
-  <!-- ===== HOME (Top 5) ===== -->
+  <!-- ===== HOME ===== -->
   <main id="home" class="view active">
     <section class="signals">
       <h2>Today’s Top 5 Signals</h2>
       <div id="signals" class="signals-row"></div>
-    </section>
-
-    <section class="preview">
-      <div class="row">
-        <h3 class="muted">Tips</h3>
-        <span class="muted">Use the search bar above or jump to <b>Feed</b> for full filters.</span>
-      </div>
     </section>
   </main>
 
@@ -115,7 +104,7 @@
 
     <section id="hero">
       <h1 id="headline">Pick a timeline to start</h1>
-      <p class="sub">Step 1: Timeline → Step 2: Scope → Step 3: (if State) choose State → Step 4: Category.</p>
+      <p class="sub muted">Step 1: Timeline → Step 2: Scope → Step 3: (if State) choose State → Step 4: Category.</p>
     </section>
 
     <section id="grid" class="grid"></section>
@@ -130,8 +119,8 @@
         <div class="muted">Set weekly goals, get a reminder, and track your streaks.</div>
       </div>
       <div class="right add-habit">
-        <input id="habit-name" placeholder="Add a habit (e.g., Run, Read, Code)" />
-        <input id="habit-color" type="color" value="#7c3aed" title="Color" />
+        <input id="habit-name" placeholder="Add a habit (e.g., Run, Read, Code)"/>
+        <input id="habit-color" type="color" value="#7c3aed" title="Color"/>
         <button id="habit-add" class="primary">Add</button>
       </div>
     </section>
@@ -142,7 +131,7 @@
         <span class="chip">श्लोक of the day</span>
       </div>
       <div id="sh-dev" class="sh-dev"></div>
-      <div id="sh-trans" class="sh-trans muted"></div>
+      <div id="sh-trans" class="sh-trans"></div>
     </section>
 
     <section class="habits-board">
@@ -155,7 +144,7 @@
         <div class="habit-actions">
           <label>Weekly goal</label>
           <div class="goal-row">
-            <input id="habit-goal" type="number" min="1" max="7" value="5" />
+            <input id="habit-goal" type="number" min="1" max="7" value="5"/>
             <span class="muted small">days / week</span>
           </div>
         </div>
@@ -163,7 +152,7 @@
         <div class="habit-actions">
           <label>Reminder (local)</label>
           <div class="goal-row">
-            <input id="habit-rem-time" type="time" />
+            <input id="habit-rem-time" type="time"/>
             <button id="habit-rem-toggle" class="mini">Enable</button>
           </div>
         </div>
@@ -203,12 +192,43 @@
     </section>
   </main>
 
+  <!-- ===== CURATED TABS ===== -->
+  <main id="finance" class="view">
+    <header class="row"><h2>Finance • Markets</h2></header>
+    <section id="grid-fin" class="grid"></section>
+    <div id="empty-fin" class="empty" style="display:none;">No finance items found.</div>
+  </main>
+
+  <main id="startup" class="view">
+    <header class="row"><h2>Business • Startups</h2></header>
+    <section id="grid-biz" class="grid"></section>
+    <div id="empty-biz" class="empty" style="display:none;">No startup items found.</div>
+  </main>
+
+  <main id="ai" class="view">
+    <header class="row"><h2>Science • AI</h2></header>
+    <section id="grid-ai" class="grid"></section>
+    <div id="empty-ai" class="empty" style="display:none;">No AI items found.</div>
+  </main>
+
+  <!-- ===== CHAT (Gemini) ===== -->
+  <main id="chat" class="view">
+    <header class="row"><h2>Chat</h2><span class="muted">Powered by Gemini</span></header>
+    <div class="chat-wrap">
+      <div id="chat-log" class="chat-log"></div>
+      <div class="chat-input">
+        <input id="chat-text" placeholder="Ask anything…"/>
+        <button id="chat-send" class="primary">Send</button>
+      </div>
+    </div>
+  </main>
+
   <!-- ===== DIGEST ===== -->
   <main id="digest" class="view">
     <header class="row">
       <h2>My Digest</h2>
       <div class="followbar">
-        <input id="follow-input" placeholder="Add term to follow (e.g., JEE, IPO)" />
+        <input id="follow-input" placeholder="Add term to follow (e.g., JEE, IPO)"/>
         <button id="follow-add">Add</button>
       </div>
       <div id="follow-chips" class="chips"></div>
@@ -221,7 +241,6 @@
     <span>Made with ❤️ • FastAPI + Vanilla JS • <a href="#" target="_blank" rel="noopener">About</a></span>
   </footer>
 
-  <!-- bump version when you tweak JS -->
-  <script src="assets/app.js?v=2025-10-05-dark-login"></script>
+  <script src="assets/app.js?v=2025-10-05-d6"></script>
 </body>
 </html>
