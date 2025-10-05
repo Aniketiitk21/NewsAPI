@@ -105,13 +105,22 @@
     <section class="habits-header">
       <div class="left">
         <h2>Habits Tracker</h2>
-        <div class="muted">Build consistency. Track daily check-ins with streaks & charts.</div>
+        <div class="muted">Set weekly goals, get a reminder, and track your streaks.</div>
       </div>
       <div class="right add-habit">
         <input id="habit-name" placeholder="Add a habit (e.g., Run, Read, Code)" />
-        <input id="habit-color" type="color" value="#2563eb" title="Color" />
+        <input id="habit-color" type="color" value="#7c3aed" title="Color" />
         <button id="habit-add" class="primary">Add</button>
       </div>
+    </section>
+
+    <section class="shloka-card" id="shloka-card">
+      <div class="sh-meta">
+        <span id="sh-ref" class="muted"></span>
+        <span class="chip">श्लोक of the day</span>
+      </div>
+      <div id="sh-dev" class="sh-dev"></div>
+      <div id="sh-trans" class="sh-trans muted"></div>
     </section>
 
     <section class="habits-board">
@@ -120,15 +129,44 @@
           <label for="habit-select">Your habits</label>
           <select id="habit-select"></select>
         </div>
+
+        <div class="habit-actions">
+          <label>Weekly goal</label>
+          <div class="goal-row">
+            <input id="habit-goal" type="number" min="1" max="7" value="5" />
+            <span class="muted small">days / week</span>
+          </div>
+
+        </div>
+
+        <div class="habit-actions">
+          <label>Reminder (local)</label>
+          <div class="goal-row">
+            <input id="habit-rem-time" type="time" />
+            <button id="habit-rem-toggle" class="mini">Enable</button>
+          </div>
+        </div>
+
         <div class="habit-actions">
           <button id="habit-rename" class="mini">Rename</button>
           <button id="habit-delete" class="mini danger">Delete</button>
         </div>
+
         <div class="stats">
           <div><span>Current streak</span><b id="stat-current">0</b></div>
           <div><span>Best streak</span><b id="stat-best">0</b></div>
-          <div><span>This month</span><b id="stat-month">0%</b></div>
+          <div><span>This week</span><b id="stat-week">0/7</b></div>
+          <div class="ring">
+            <svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="16"/><circle class="fg" id="goal-ring" cx="18" cy="18" r="16"/></svg>
+            <div class="ring-text"><b id="ring-val">0%</b><span class="small muted">Goal</span></div>
+          </div>
         </div>
+
+        <div class="exporter">
+          <button id="csv-export" class="mini">Export CSV</button>
+          <button id="ics-export" class="mini">Download iCal</button>
+        </div>
+
         <canvas id="habit-chart" height="120"></canvas>
       </aside>
 
@@ -138,9 +176,7 @@
           <h3 id="cal-title">Month YYYY</h3>
           <button id="cal-next" class="mini">▶</button>
         </header>
-        <div class="cal-grid" id="cal-grid">
-          <!-- days injected -->
-        </div>
+        <div class="cal-grid" id="cal-grid"></div>
         <div class="muted small">Click a date to toggle done/undone. Data saved locally.</div>
       </section>
     </section>
@@ -164,6 +200,6 @@
     <span>Made with ❤️ • FastAPI + Vanilla JS • <a href="#" target="_blank" rel="noopener">About</a></span>
   </footer>
 
-  <script src="assets/app.js?v=2025-10-05-habits1"></script>
+  <script src="assets/app.js?v=2025-10-05-light-habits2"></script>
 </body>
 </html>
