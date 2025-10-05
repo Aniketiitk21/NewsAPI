@@ -1,4 +1,3 @@
-# backend/aggregator/utils.py
 import datetime as dt
 import pytz, re
 from typing import Optional, List
@@ -11,7 +10,7 @@ def now_ist() -> dt.datetime:
 def within_days_ist(pub_dt: Optional[dt.datetime], days: int) -> bool:
     if not pub_dt:
         return False
-    floor = (now_ist() - dt.timedelta(days=days-1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    floor = (now_ist() - dt.timedelta(days=max(1, days) - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return pub_dt >= floor
 
 def text_contains_any(text: str, keys: List[str]) -> bool:
@@ -29,10 +28,7 @@ def strip_html(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s or "")).strip()
 
 def summary_from_text(text: str, title: str = "", max_chars: int = 900) -> str:
-    """
-    Fallback: simple lead-3 (kept for reliability).
-    Called by fetch if rule-based returns empty.
-    """
+    """Fallback: simple lead-3 (kept for reliability)."""
     if not text:
         return ""
     parts = re.split(r'(?<=[.!?])\s+', strip_html(text))
