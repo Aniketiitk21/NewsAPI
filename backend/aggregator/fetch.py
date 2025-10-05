@@ -1,7 +1,6 @@
-# backend/aggregator/fetch.py
 import datetime as dt
 from typing import List, Optional, Dict
-import pytz, feedparser, re, time
+import pytz, feedparser, re, time, os
 
 from .sources import NATIONAL_FEEDS, STATE_FEEDS
 from .config import CATEGORY_KEYWORDS
@@ -11,8 +10,12 @@ from .summarize import summarize_rule_based
 
 IST = pytz.timezone("Asia/Kolkata")
 
+# In-memory cache (works fine for single dyno)
 _CACHE: Dict[str, Dict] = {}
-_CACHE_TTL_SECONDS = 15 * 60  # 15 minutes
+_CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", str(15 * 60)))  # default 15 min
+
+USER_AGENT = os.getenv("NL_USER_AGENT", "Mozilla/5.0 NewsLens/1.2 (+https://example.invalid)")
+DEEP_MODE_ENABLED = os.getenv("DEEP_MODE_ENABLED", "1") == "1"  # allow disabling newspaper3k entirely on free hosts
 
 def _cache_key(scope: str, state: Optional[str], category: Optional[str], days: int, limit: int, fetch_mode: str) -> str:
     return f"{scope}|{state or ''}|{category or ''}|{days}|{limit}|{fetch_mode}"
@@ -40,20 +43,23 @@ def _parse_pub_date(entry) -> Optional[dt.datetime]:
 
 def _download_article(url: str, retries: int = 1) -> Dict:
     """
-    Lazy-import newspaper3k to avoid hard dependency at app startup.
-    If import fails (e.g., lxml_html_clean not installed), we return empty text
-    so the caller can gracefully fall back to RSS description.
+    Lazy-import newspaper3k to avoid startup import failures on Render (lxml_html_clean).
+    If import fails or DEEP_MODE_ENABLED=0, return empty text -> caller will fall back.
     """
+    if not DEEP_MODE_ENABLED:
+        return {"title": "", "text": "", "published_at": None, "err": "deep_mode_disabled"}
+
     try:
         from newspaper import Article, Config  # lazy import
     except Exception as e:
         return {"title": "", "text": "", "published_at": None, "err": f"newspaper_import_failed:{e.__class__.__name__}"}
 
     cfg = Config()
-    cfg.browser_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsLens/1.1"
+    cfg.browser_user_agent = USER_AGENT
     cfg.request_timeout = 12
     cfg.memoize_articles = False
     cfg.fetch_images = False
+
     last_err = None
     for _ in range(retries + 1):
         try:
@@ -71,7 +77,7 @@ def _download_article(url: str, retries: int = 1) -> Dict:
             return {"title": title, "text": text, "published_at": pub}
         except Exception as e:
             last_err = e
-            time.sleep(0.5)
+            time.sleep(0.4)
     return {"title": "", "text": "", "published_at": None, "err": f"download_failed:{type(last_err).__name__ if last_err else 'unknown'}"}
 
 def _match_category(title: str, desc: str, fulltext: str, cat: Optional[str]) -> bool:
@@ -97,6 +103,11 @@ def get_news(
     fetch_mode: str = "light",
     max_per_feed: int = 80
 ) -> List[Dict]:
+    """Fetch + summarize from RSS with defensive parsing and caching."""
+    days = max(1, min(14, int(days)))
+    limit = max(1, min(200, int(limit)))
+    fetch_mode = "deep" if (fetch_mode == "deep" and DEEP_MODE_ENABLED) else "light"
+
     key = _cache_key(scope, state, category, days, limit, fetch_mode)
     cached = _get_cached(key)
     if cached is not None:
@@ -136,7 +147,7 @@ def get_news(
                     art_title = a.get("title") or art_title
                     art_text = a.get("text") or ""  # may be empty if import failed
                     art_pub = a.get("published_at")
-                    if not art_text:  # graceful fallback to RSS desc
+                    if not art_text:
                         art_text = desc
                 else:
                     art_text = desc
@@ -166,7 +177,9 @@ def get_news(
                 if len(results) >= limit:
                     break
         except Exception:
-            continue
+            # continue other feeds silently (best-effort)
+            pass
+
         if len(results) >= limit:
             break
 
