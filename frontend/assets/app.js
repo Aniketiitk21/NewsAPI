@@ -6,6 +6,45 @@ const API = (p, params={}) => {
 const STATES = ["Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal","Delhi","Jammu and Kashmir","Ladakh","Puducherry","Chandigarh"];
 const capitalize = s => s ? s[0].toUpperCase()+s.slice(1) : s;
 const fmtDate = d => new Date(d).toISOString().slice(0,10);
+const $ = id => document.getElementById(id);
+
+/* =============== very simple login gate =============== */
+const AUTH_KEY = "nl_auth_ok";
+const loginOverlay = $("login-overlay");
+const loginUser = $("login-user");
+const loginPass = $("login-pass");
+const loginBtn  = $("login-btn");
+const loginErr  = $("login-err");
+
+function showLogin(){
+  loginOverlay.classList.add("show");
+  loginUser.focus();
+}
+function hideLogin(){
+  loginOverlay.classList.remove("show");
+}
+function isAuthed(){
+  try{ return localStorage.getItem(AUTH_KEY)==="1"; }catch{ return false; }
+}
+function doLogin(){
+  const u = (loginUser.value||"").trim();
+  const p = (loginPass.value||"").trim();
+  if(u==="sandhanar21" && p==="Bharat@1947"){
+    localStorage.setItem(AUTH_KEY, "1");
+    hideLogin();
+    init(); // kick things off after login
+  }else{
+    loginErr.style.display="block";
+    loginErr.textContent = "Invalid username or password.";
+  }
+}
+loginBtn?.addEventListener("click", doLogin);
+loginPass?.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+
+/* If not authed, block app until login */
+if(!isAuthed()){
+  showLogin();
+}
 
 /* =============== tabs/nav =============== */
 const tabs = document.querySelectorAll(".tab");
@@ -179,7 +218,6 @@ refreshBtn?.addEventListener("click", fetchNews);
 
 /* =============== HABITS =============== */
 const HAB_KEY="nl_habits";  // [{id,name,color,goal,remTime,remOn,history{date:bool}}]
-const $ = id => document.getElementById(id);
 
 const habitNameEl=$("habit-name"), habitColorEl=$("habit-color"), habitAddBtn=$("habit-add");
 const habitSelect=$("habit-select"), habitGoalEl=$("habit-goal");
@@ -209,33 +247,22 @@ function ensureHabitSelected(){
   return arr.find(h=>h.id===habitSelect.value) || arr[0];
 }
 
-/* Shloka of the day (18 short verses) */
-const SHLOKAS = [
-  {ref:"1.1", dev:"धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः ।", tr:"On the field of dharma, the armies gather, eager for battle."},
-  {ref:"2.47", dev:"कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।", tr:"You have a right to action alone, not to its fruits."},
-  {ref:"2.48", dev:"योगस्थः कुरु कर्माणि सङ्गं त्यक्त्वा धनंजय ।", tr:"Established in yoga, perform your duty, abandoning attachment."},
-  {ref:"3.19", dev:"तस्मादसक्तः सततं कार्यं कर्म समाचर ।", tr:"Therefore, without attachment, constantly perform your proper work."},
-  {ref:"4.7",  dev:"यदा यदा हि धर्मस्य ग्लानिर्भवति भारत ।", tr:"Whenever righteousness declines, I manifest Myself."},
-  {ref:"4.13", dev:"चातुर्वर्ण्यं मया सृष्टं गुणकर्मविभागशः ।", tr:"I created the fourfold order according to qualities and work."},
-  {ref:"5.10", dev:"ब्रह्मण्याधाय कर्माणि सङ्गं त्यक्त्वा करोति यः ।", tr:"He who acts renouncing attachment is untouched by sin."},
-  {ref:"6.5",  dev:"उद्धरेदात्मनाऽत्मानं नात्मानमवसादयेत् ।", tr:"Lift yourself by yourself; do not degrade yourself."},
-  {ref:"6.26", dev:"यतो यतो निश्चरति मनश्चञ्चलमस्थिरम् ।", tr:"Wherever the restless mind wanders, bring it back under control."},
-  {ref:"7.7",  dev:"मत्तः परतरं नान्यत्किञ्चिदस्ति धनंजय ।", tr:"There is nothing whatsoever higher than Me, Arjuna."},
-  {ref:"8.7",  dev:"तस्मात्सर्वेषु कालेषु मामनुस्मर युध्य च ।", tr:"Therefore remember Me at all times and fight."},
-  {ref:"9.22", dev:"अनन्याश्चिन्तयन्तो मां ये जनाः पर्युपासते ।", tr:"Those who single-mindedly worship Me, I carry their needs."},
-  {ref:"10.20",dev:"अहमात्मा गुडाकेश सर्वभूताशयस्थितः ।", tr:"I am the Self seated in the hearts of all beings."},
-  {ref:"12.15",dev:"यस्मान्नोद्विजते लोको लोकान्नोद्विजते च यः ।", tr:"He by whom the world is not disturbed, and who is not disturbed by the world…"},
-  {ref:"13.2", dev:"क्षेत्रज्ञं चापि मां विद्धि सर्वक्षेत्रेषु भारत ।", tr:"Know Me as the knower in all bodies."},
-  {ref:"14.26",dev:"मां च योऽव्यभिचारेण भक्तियोगेन सेवते ।", tr:"He who serves Me with unwavering devotion transcends the gunas."},
-  {ref:"16.3", dev:"तेजः क्षमा धृतिः शौचम् अद्रोहो नातिमानिता ।", tr:"Vigor, forgiveness, fortitude, purity, non-injury, humility…"},
-  {ref:"18.66",dev:"सर्वधर्मान् परित्यज्य मामेकं शरणं व्रज ।", tr:"Abandon all duties and take refuge in Me alone."}
-];
-function renderShloka(){
-  const idx = (Math.floor((Date.now()/86400000)) % SHLOKAS.length);
-  const s = SHLOKAS[idx];
-  document.getElementById("sh-ref").textContent = `Gita ${s.ref}`;
-  document.getElementById("sh-dev").textContent = s.dev;
-  document.getElementById("sh-trans").textContent = s.tr;
+/* Shloka of the day via backend (with fallback if API missing) */
+async function renderShloka(){
+  try{
+    const r = await fetch("/api/shloka/daily");
+    if(r.ok){
+      const s = await r.json();
+      $("sh-ref").textContent = `Gita ${s.ref||""}`;
+      $("sh-dev").textContent = s.dev || "";
+      $("sh-trans").textContent = s.tr || "";
+      return;
+    }
+  }catch{}
+  // fallback short line
+  $("sh-ref").textContent = "Gita 2.47";
+  $("sh-dev").textContent = "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।";
+  $("sh-trans").textContent = "You have a right to action alone, not to its fruits.";
 }
 
 /* Habit CRUD */
@@ -266,13 +293,13 @@ habitGoalEl?.addEventListener("change", ()=>{
   h.goal=v; saveHabits(arr); renderHabitsUI();
 });
 
-/* Reminder (local Notification API) */
+/* Reminder (Notification API, local only) */
 habitRemToggle?.addEventListener("click", async ()=>{
   const arr=loadHabits(); const h=ensureHabitSelected(); if(!h) return;
   const t = habitRemTime.value;
   if(!h.remOn){
-    if(Notification && Notification.permission!=="granted"){
-      await Notification.requestPermission();
+    if(window.Notification && Notification.permission!=="granted"){
+      try{ await Notification.requestPermission(); }catch{}
     }
     h.remTime = t || "20:00";
     h.remOn = true;
@@ -288,37 +315,34 @@ setInterval(()=>{ // simple local “scheduler”
   const mm = String(now.getMinutes()).padStart(2,"0");
   const cur = `${hh}:${mm}`;
   arr.forEach(h=>{
-    if(h.remOn && h.remTime===cur){
-      try{
-        new Notification("Habit reminder", { body:`${h.name} — time to check in!` });
-      }catch{}
+    if(h.remOn && h.remTime===cur && window.Notification && Notification.permission==="granted"){
+      try{ new Notification("Habit reminder", { body:`${h.name} — time to check in!` }); }catch{}
     }
   });
 }, 60*1000);
 
 /* Calendar + stats */
-let calCursorMonth = new Date();
 function renderHabitsUI(){
   renderShloka();
 
   const arr=loadHabits();
   if(arr.length===0){
-    calTitle.textContent="Create a habit to start";
-    calGrid.innerHTML = `<div class="empty">No habits yet. Add one above.</div>`;
-    statCurrent.textContent="0"; statBest.textContent="0"; statWeek.textContent="0/7"; updateRing(0);
+    $("cal-title").textContent="Create a habit to start";
+    $("cal-grid").innerHTML = `<div class="empty">No habits yet. Add one above.</div>`;
+    $("stat-current").textContent="0"; $("stat-best").textContent="0"; $("stat-week").textContent="0/7"; updateRing(0);
     drawChart([]);
     return;
   }
   const h=ensureHabitSelected(); if(!h) return;
-  habitGoalEl.value = h.goal||5;
-  habitRemTime.value = h.remTime||"";
-  habitRemToggle.textContent = h.remOn ? "Disable" : "Enable";
+  $("habit-goal").value = h.goal||5;
+  $("habit-rem-time").value = h.remTime||"";
+  $("habit-rem-toggle").textContent = h.remOn ? "Disable" : "Enable";
 
   renderCalendar(h);
   const stats = computeStats(h);
-  statCurrent.textContent=String(stats.currentStreak);
-  statBest.textContent=String(stats.bestStreak);
-  statWeek.textContent=`${stats.thisWeek}/${h.goal||5}`;
+  $("stat-current").textContent=String(stats.currentStreak);
+  $("stat-best").textContent=String(stats.bestStreak);
+  $("stat-week").textContent=`${stats.thisWeek}/${h.goal||5}`;
   const pct = Math.min(100, Math.round((stats.thisWeek / (h.goal||5))*100));
   updateRing(pct);
   drawChart(stats.weekly);
@@ -327,7 +351,8 @@ function renderCalendar(h){
   const y=calCursor.getFullYear(), m=calCursor.getMonth();
   const first=new Date(y,m,1), last=new Date(y,m+1,0);
   const start=((first.getDay()+6)%7); const days=last.getDate();
-  calTitle.textContent = `${first.toLocaleString("default",{month:"long"})} ${y}`;
+  $("cal-title").textContent = `${first.toLocaleString("default",{month:"long"})} ${y}`;
+  const calGrid=$("cal-grid");
   calGrid.innerHTML = `
     <div class="cal-wd">Mon</div><div class="cal-wd">Tue</div><div class="cal-wd">Wed</div>
     <div class="cal-wd">Thu</div><div class="cal-wd">Fri</div><div class="cal-wd">Sat</div><div class="cal-wd">Sun</div>
@@ -338,7 +363,6 @@ function renderCalendar(h){
     const cell=document.createElement("button"); cell.className="cal-cell day";
     cell.innerHTML=`<span class="num">${d}</span>`;
     if(h.history && h.history[key]) cell.classList.add("done");
-    cell.style.setProperty("--accent", h.color||"#7c3aed");
     cell.onclick=()=>{
       const arr=loadHabits(); const me=arr.find(x=>x.id===h.id);
       if(!me.history) me.history={}; me.history[key]=!me.history[key];
@@ -347,8 +371,8 @@ function renderCalendar(h){
     calGrid.appendChild(cell);
   }
 }
-calPrev?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderHabitsUI(); });
-calNext?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderHabitsUI(); });
+$("cal-prev")?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderHabitsUI(); });
+$("cal-next")?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderHabitsUI(); });
 
 function computeStats(h){
   const today=new Date(); today.setHours(0,0,0,0);
@@ -380,17 +404,17 @@ function updateRing(pct){
   ringVal.textContent = `${pct}%`;
 }
 function drawChart(weekly){
-  const W=chartCanvas.width=chartCanvas.clientWidth; const H=chartCanvas.height=120;
+  const W=chartCanvas.width=chartCanvas.clientWidth; const H=120;
   ctx.clearRect(0,0,W,H); if(!weekly || weekly.length===0) return;
   const max=Math.max(...weekly,7), stepX=W/(weekly.length-1), scaleY=(H-20)/max;
   ctx.lineWidth=2; ctx.strokeStyle="#7c3aed"; ctx.beginPath();
   weekly.forEach((v,i)=>{ const x=i*stepX, y=H-10-v*scaleY; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }); ctx.stroke();
-  ctx.strokeStyle="#e5e7eb"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,H-10); ctx.lineTo(W,H-10); ctx.stroke();
+  ctx.strokeStyle="#1f2633"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,H-10); ctx.lineTo(W,H-10); ctx.stroke();
   ctx.fillStyle="#7c3aed"; weekly.forEach((v,i)=>{ const x=i*stepX, y=H-10-v*scaleY; ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill(); });
 }
 
-/* Export CSV (all habits) */
-document.getElementById("csv-export")?.addEventListener("click", ()=>{
+/* Export CSV */
+$("csv-export")?.addEventListener("click", ()=>{
   const arr=loadHabits(); const rows=[["habit_id","habit_name","date","done"]];
   arr.forEach(h=>{
     Object.keys(h.history||{}).forEach(k=>{
@@ -402,27 +426,18 @@ document.getElementById("csv-export")?.addEventListener("click", ()=>{
   const a=document.createElement("a"); a.href=url; a.download="habits.csv"; a.click(); URL.revokeObjectURL(url);
 });
 
-/* Export iCal reminders (next 30 days) for selected habit */
-document.getElementById("ics-export")?.addEventListener("click", ()=>{
+/* Export iCal reminders (next 30 days) */
+$("ics-export")?.addEventListener("click", ()=>{
   const h=ensureHabitSelected(); if(!h){ alert("Add a habit first"); return; }
   const tm=h.remTime||"20:00"; const [hh,mm]=tm.split(":").map(Number);
-  const lines=[
-    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//NewsLens//Habits//EN"
-  ];
+  const lines=[ "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//NewsLens//Habits//EN" ];
   const now=new Date();
   for(let i=0;i<30;i++){
     const d=new Date(now); d.setDate(now.getDate()+i);
     d.setHours(hh||20, mm||0, 0, 0);
     const dt = d.toISOString().replace(/[-:]/g,"").split(".")[0]+"Z";
     const uid = `nl-${h.id}-${i}@newslens`;
-    lines.push(
-      "BEGIN:VEVENT",
-      `UID:${uid}`,
-      `DTSTAMP:${dt}`,
-      `DTSTART:${dt}`,
-      `SUMMARY:${h.name} – Habit Reminder`,
-      "END:VEVENT"
-    );
+    lines.push("BEGIN:VEVENT",`UID:${uid}`,`DTSTAMP:${dt}`,`DTSTART:${dt}`,`SUMMARY:${h.name} – Habit Reminder`,"END:VEVENT");
   }
   lines.push("END:VCALENDAR");
   const blob=new Blob([lines.join("\r\n")],{type:"text/calendar"});
@@ -430,13 +445,10 @@ document.getElementById("ics-export")?.addEventListener("click", ()=>{
   const a=document.createElement("a"); a.href=url; a.download=`${h.name}-reminders.ics`; a.click(); URL.revokeObjectURL(url);
 });
 
-/* Calendar nav */
-calPrev?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderHabitsUI(); });
-calNext?.addEventListener("click", ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderHabitsUI(); });
-
 /* ===== init ===== */
 function init(){
+  if(!isAuthed()) return; // wait for login
   loadTop5();
   populateStates(); setStepEnabled(1); updateHeadline();
 }
-init();
+if(isAuthed()) init();
